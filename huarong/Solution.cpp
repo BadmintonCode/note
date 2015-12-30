@@ -1,3 +1,34 @@
+/*
+1)将棋盘看做坐标系中的20个点
+
+坐标或者棋盘上的点：
+    a)可以用2个整数<x,y>（x=第几行，y=第几列）表示
+    b)也可以用一个整数（第几个点）表示,但是这里为了方便运算，使用4个字节的整数进行移位运算后表示（最多移位20）。
+
+棋子坐标：
+    每个棋子左上角占的点表示该棋子的坐标。
+
+点的集合：
+    将每个点代表的整数position进行与运算后表示（不重合）
+
+棋盘布局：
+    见State，4个整数，每个整数表示一种棋子坐标的集合，用&运算判断棋子是否到达某个点。
+
+棋子可移动边界：
+    见Border，4个整数，表示棋子移动时，4个方向上能到达的坐标边界
+
+棋子移动：
+    棋子移动时候，需要判断4个方向是否可以移动，这里将所有棋子构成的点的集合（即整数）
+    进行与非等运算来判断。
+    见PointUtil::fill/Shape::can_move等
+
+
+3)算法：
+  使用BFS，用State表示状态，使用map记录遍历过的状态。
+
+
+*/
+
 #include <iostream>
 #include <queue>
 #include <vector>
@@ -5,23 +36,23 @@
 
 using namespace std;
 
-#define WIDTH 4
-#define HEIGHT 5
+#define WIDTH 4             /*棋盘宽度*/
+#define HEIGHT 5            /*棋盘高度*/
 #define SIZE ((WIDTH) * (HEIGHT))
 
 
-#define DIRECT_UP 0
+#define DIRECT_UP 0       /*方向向上，下类似*/
 #define DIRECT_DOWN 1
 #define DIRECT_LEFT 2
 #define DIRECT_RIGHT 3
 
 
-#define INDEX_BBOX 0
+#define INDEX_BBOX 0    /*棋子的index*/
 #define INDEX_VBOX 1
 #define INDEX_HBOX 2
 #define INDEX_SBOX 3
 
-#define BBOX_W 2
+#define BBOX_W 2        /*棋子（曹操）的高度，下类似*/
 #define BBOX_H 2
 #define VBOX_W 1
 #define VBOX_H 2
@@ -31,13 +62,16 @@ using namespace std;
 #define SBOX_H 1
 
 
-#define POINT_MOVE(p,i,j) ((p) << (WIDTH * (i) + j)) 
-#define POINT(index) (1 << (index))
-#define POINT_REMOVE(chart, shape) ((chart) & ~(shape))
-#define POINT_REPLACE(chart, osp, nsp) ((chart) & ~(osp) | (nsp))
+#define POINT_MOVE(p,i,j) ((p) << (WIDTH * (i) + j)) /*坐标转换*/
+#define POINT(index) (1 << (index))                  //
+#define POINT_REMOVE(chart, shape) ((chart) & ~(shape))  /*棋盘 移除某个 棋子*/
+#define POINT_REPLACE(chart, osp, nsp) ((chart) & ~(osp) | (nsp)) /*棋盘 移动某个 棋子*/
 
 #define DEBUE false
+/*
+表示一个棋子可以移动的范围，用来约束棋子移动时可以移动的位置。
 
+*/
 class Border
 {
 private:
@@ -74,7 +108,11 @@ public:
         return positions[direct];
     }
 };
+/*
+当前棋面的状态
+有个数组成员，数组长度为4，分别表示4类棋子在棋盘占据的坐标
 
+*/
 struct State
 {
 public:
@@ -113,11 +151,17 @@ public:
     {
         return values[index];
     }
-
+    /*
+    * 棋子index是否到达<i,j>
+    */
     bool arrive(int index, int i, int j) const
     {
         return ((*this)[index] & POINT_MOVE(1, i, j)) > 0;
     }
+    /*
+    * 把棋子index 放在<x,y>
+    * 
+    */
     void fill(int index, int i, int j)
     {
         (*this)[index] = (*this)[index] | POINT_MOVE(1, i, j);
@@ -125,7 +169,9 @@ public:
 };
 int State::ID = 0;
 
-
+/*
+辅助类，用于画出当前棋盘的布局
+*/
 class Pannel
 {
 private:
@@ -154,7 +200,9 @@ public:
         }
     }
 };
-
+/*
+坐标的工具类
+*/
 class PointUtil
 {
 
@@ -300,7 +348,9 @@ struct LOG
     }
     //static void debug()
 };
-
+/*
+棋子基类
+*/
 struct Shape
 {
     int width;
@@ -473,7 +523,7 @@ class Soluation
 {
 private:
     queue<State*> queue;
-    unordered_set<const State*,Hash,Equal> set;
+    unordered_set<const State*,Hash,Equal> set;   /*用来记录已经遍历过的状态*/  
     StateHandler state_handler;
 
 

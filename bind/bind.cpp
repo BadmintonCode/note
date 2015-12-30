@@ -1,4 +1,6 @@
 
+/*a bind function example*/
+
 #include <iostream>
 
 template<typename ReturnType,typename ArgType>
