@@ -118,7 +118,7 @@ Command
 
 ###2.3 tcp连接读写
 
-*   初次加入把tcp连接注册到reactor
+*   初次加入把tcp连接注册到reactor  
 >在client构造时，调用MemcachedConnector::createSession创建tcp连接，加入到reactor
 
 ```java
@@ -170,7 +170,7 @@ XMemcachedClient::get0()  //读取数据
         ->Reactor::wakeup()
 ```
 
-*   写完command
+*   写完command  
 >写完cmd，添加到session 里面的 队列(commandAlreadySent)里面去
 
 ```java
@@ -195,7 +195,7 @@ AbstractNioSession::onEvent()
 ### 2.4 线程模块
 
 线程有3种 
- 
+
 *   app线程：使用client的线程，比如：发送command。  
 *   reactor线程：管理io读写事件线程，或者io读写。   
 *   io读写线程：见线程池配置，如果没有单独配置线程池，则读写数据由reactor线程处理。  
