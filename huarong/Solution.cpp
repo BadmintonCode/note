@@ -1,21 +1,26 @@
 /*
-1)将棋盘看做坐标系中的20个点
 
-坐标或者棋盘上的点：
-    a)可以用2个整数<x,y>（x=第几行，y=第几列）表示
-    b)也可以用一个整数（第几个点）表示,但是这里为了方便运算，使用4个字节的整数进行移位运算后表示（最多移位20）。
+棋盘一共有20个空格。
+
+坐标或者点：
+    a)整数对<x,y>,（x=第几行，y=第几列）表示
+    b)整数x，其中x=1<<n,n表示棋盘上第几个点（n>=1 && n<=20）表示
 
 棋子坐标：
     每个棋子左上角占的点表示该棋子的坐标。
 
-点的集合：
-    将每个点代表的整数position进行与运算后表示（不重合）
+点或者坐标集合：
+    将每个点或者坐标代表的整数position进行与运算（&）后表示
+
+棋子空间的点集：
+    棋子自身空间构成的点（一个棋子对应多个点），组成的集合，也用整数表示。
+
 
 棋盘布局：
     见State，4个整数，每个整数表示一种棋子坐标的集合，用&运算判断棋子是否到达某个点。
 
 棋子可移动边界：
-    见Border，4个整数，表示棋子移动时，4个方向上能到达的坐标边界
+    见Border，4个整数，表示棋子移动时，4个方向上能到达的坐标边界（坐标边界也是点的集合）
 
 棋子移动：
     棋子移动时候，需要判断4个方向是否可以移动，这里将所有棋子构成的点的集合（即整数）
@@ -23,8 +28,8 @@
     见PointUtil::fill/Shape::can_move等
 
 
-3)算法：
-  使用BFS，用State表示状态，使用map记录遍历过的状态。
+算法：
+  使用BFS，用State表示状态，使用map记录遍历过的状态去重。
 
 
 */
@@ -62,23 +67,20 @@ using namespace std;
 #define SBOX_H 1
 
 
-#define POINT_MOVE(p,i,j) ((p) << (WIDTH * (i) + j)) /*坐标转换*/
+#define POINT_MOVE(p,i,j) ((p) << (WIDTH * (i) + j)) /*坐标转换：整数对 转换成 整数*/
 #define POINT(index) (1 << (index))                  //
 #define POINT_REMOVE(chart, shape) ((chart) & ~(shape))  /*棋盘 移除某个 棋子*/
 #define POINT_REPLACE(chart, osp, nsp) ((chart) & ~(osp) | (nsp)) /*棋盘 移动某个 棋子*/
 
 #define DEBUE false
-/*
-表示一个棋子可以移动的范围，用来约束棋子移动时可以移动的位置。
 
-*/
 class Border
 {
 private:
     int positions[4];
 public:
     friend class PointUtil;
-    Border(int width, int height)
+    Border(int width, int height)//根据棋子的宽高，计算棋子可以移动的边界
     {
         int left = 0;
         int right =0;
@@ -152,14 +154,14 @@ public:
         return values[index];
     }
     /*
-    * 棋子index是否到达<i,j>
+    * index 对应的棋子是否到达<i,j>
     */
     bool arrive(int index, int i, int j) const
     {
         return ((*this)[index] & POINT_MOVE(1, i, j)) > 0;
     }
     /*
-    * 把棋子index 放在<x,y>
+    * index 对应的棋子放在<x,y>
     * 
     */
     void fill(int index, int i, int j)
@@ -207,6 +209,9 @@ class PointUtil
 {
 
 public:
+    /*
+    * 把点集 positions 在pannel上用字符 ch  画出来
+    */
     static void draw(int positions, char ch, Pannel &pannel)
     {
         for (int n = 0; n < SIZE; n++)
@@ -220,6 +225,9 @@ public:
         }   
     };
     
+    /*
+    * 把边界 border 在pannel上用字符 ch  画出来
+    */
     static void draw(const Border &border, char ch, Pannel &pannel)
     {
         draw(border[DIRECT_UP], ch, pannel);
@@ -228,12 +236,14 @@ public:
         draw(border[DIRECT_RIGHT], ch, pannel);
     };
 
-
+    /*
+    * 把多个棋子（宽度width，高度height）构成的点（左上角）集，在pannel上用字符 ch  画出来
+    */
     static void draw(int positions, int width, int height, char ch, Pannel &pannel)
     {
         for (int n = 0; n < SIZE; n++)
         {
-            if ((positions & (1 << n)) > 0)
+            if ((positions & (1 << n)) > 0)//第 n 个位置放置了棋子
             {
                 int x = n / WIDTH;
                 int y = n % WIDTH;
@@ -248,6 +258,9 @@ public:
         } 
     }; 
 
+    /*
+    * 把状态 state 在pannel 画出，每个棋子用index 对应的字符画出
+    */
     static void draw(const State &state, Pannel &pannel)
     {
         draw(state[INDEX_BBOX], BBOX_W, BBOX_H, '1' - 1 + INDEX_BBOX, pannel);
@@ -262,10 +275,17 @@ public:
     }
 
 
+    /*
+    * 把某个类型，数量多个的棋子（宽度width，高度height）坐标构成的点集，用整数表示
+    * positions ： 多个棋子坐标的点集
+    * width ： 棋子宽度
+    * height ： 棋子高度
+    * chart ： 多个棋子空间点集
+    */
     static void fill(int positions, int width, int height, int &chart)
     {
-        for (int n = 0; n < SIZE; n++)
-        {
+        //for (int n = 0; n < SIZE; n++)
+        //{
             //if ((positions & (1 << n)) > 0)
             //{
              //   int x = n / WIDTH;
@@ -278,9 +298,12 @@ public:
                     }
                 } 
             //}
-        } 
+        //} 
     }; 
 
+    /**
+    * 计算某个状态state下，所有棋子空间的点集
+    */
     static void fill(const State &state, int &chart)
     {
         fill((state)[INDEX_BBOX], BBOX_W, BBOX_H, chart);
@@ -289,7 +312,9 @@ public:
         fill((state)[INDEX_SBOX], SBOX_W, SBOX_H, chart); 
     };
 
-
+    /**
+    * 某个点 或者 点集 移动
+    */
     static int move(int direct, int point)
     {
         if (direct == DIRECT_UP)
@@ -365,10 +390,12 @@ struct Shape
     }
 
     
-
+    /**
+    * 某个状态下，当前所有棋子空间点集为chart， 可以移动index 对应的棋子 ，达到的状态放在 results 中
+    */
     void move(const State *state, int &chart, vector<State*> &results)
     {
-        int positions = (*state)[this->index];
+        int positions = (*state)[this->index]; //获取index 所有棋子的点集
         int i = 0;
         for (; i < SIZE; i++)
         {
@@ -377,10 +404,10 @@ struct Shape
             {
                 continue;
             }
-            for (int direct = 0; direct < 4; direct++)
+            for (int direct = 0; direct < 4; direct++)//在4个方向移动其中的一个棋子
             {
 
-                if (border.at(direct, position)){
+                if (border.at(direct, position)){ //当前已经在边界
                     continue;
                 }
                 int new_position = PointUtil::move(direct, position); //= move(direct, position);
@@ -414,7 +441,9 @@ struct Shape
         }
                  
     }
-
+    /**
+    * 在某个状态下，所有棋子空间的点集为chart，判断棋子index 是否可以从 source_position 移动到 target_position
+    */
     bool can_move(int source_position, int target_position, int chart)
     {
         int source_shape = 0;
@@ -427,7 +456,7 @@ struct Shape
         // LOG::info(target_shape);
         // LOG::info(chart);
         // LOG::info(chart & ~source_shape & target_shape);
-        return (chart & ~source_shape & target_shape) == 0;
+        return (chart & ~source_shape & target_shape) == 0; // 判断移动后是否与其他棋子不重合
 
     }
 };
@@ -478,7 +507,9 @@ private:
 
 public:
      
-
+    /*
+    * 根据当前状态 state ，选择棋盘上所有的棋子进行移动。
+    */
     vector<State*> next(State *state)
     {
         vector<State*> results;

@@ -5,7 +5,21 @@
 
 版本：4.3  
 故障现象：日志出现异常 Timeout waiting for connection from pool  
-原因：因为请求https站点，参数设置不当引起连接池泄露  
+原因：httpclient设置时间相关的参数见下面代码，实际在处理ssl链接建立时，其中的soTimeout并没有生效，
+需要在另外一个地方提前设置。
+
+```
+RequestConfig rc = RequestConfig.custom()
+                .setConnectionRequestTimeout(5000) //从链接池获取链接超时
+                .setConnectTimeout(5000)   
+                //建立tcp链接超时 Socket.connect(SocketAddress endpoint, int timeout)
+                .setSocketTimeout(5000).build(); 
+                //从tcp读数据超时时间,见Socket.setSoTimeout(int timeout)
+
+HttpPost post = new HttpPost(uri);
+post.setConfig(rc);
+
+```
 
 
 
@@ -23,14 +37,16 @@ o.a.h.i.c.PoolingHttpClientConnectionManager-Connection request: [route: {s}->ht
 #####故障原因
 
 httpclient建立连接，对http站点的连接和https站点的连接处理不同。
-建立过程见HttpClientConnectionOperator，setSoTimeout 主要用来设置建立tcp连接时，读取tcp连接的超时时间。
+建立过程见HttpClientConnectionOperator.java，setSoTimeout 主要用来设置读取tcp连接的超时时间。  
+这里是从socketConfig获取的时间参数，和我们一般用的RequestConfig不是同一个类。
 
 ```java
 sock.setSoTimeout(socketConfig.getSoTimeout());
 sock = sf.connectSocket(connectTimeout, sock, host, remoteAddress, localAddress, context);
 ```
 
-成功建立连接后会用用户设置的超时时间覆盖。重新设置读取tcp超时 见MainClientExec
+成功建立连接后会用用户设置的超时时间覆盖。重新设置读取tcp超时 见MainClientExec.java  
+也就是说，到了这里才会用 RequestConfig 里面设置的超时时间来覆盖。
 
 ```java
 final int timeout = config.getSocketTimeout();  
@@ -39,9 +55,9 @@ if (timeout >= 0) {
 }
 ```
 
-对http站点：建立连接时，只建立连接，不读取数据，所以 HttpClientConnectionOperator 里面设置的soTimeout没影响。  
+对http站点：建立连接时，只建立连接，不读取数据，所以HttpClientConnectionOperator.java   里面从socketConfig里面获取的超时时间即使设置了，也没有影响。  
 
-对https站点：建立连接时，先建立连接，再读取数据，所以 HttpClientConnectionOperator里面设置的soTimeout会影响初次建立连接。  
+对https站点：建立连接时，先建立连接，再读取数据，所以 HttpClientConnectionOperator.java 里面设置的soTimeout会影响初次建立连接。  
 而这个默认值为0（阻塞读），如果服务器无响应会导致线程阻塞，连接不能还回连接池。
 
 #####如何认定https请求时，发生了这种故障
