@@ -181,6 +181,7 @@ AbstractNioSession::onWrite()
 
 *   command 有响应
 >读到数据，找到发送完的cmd 列表取第一个，再处理
+
 ```java
 AbstractNioSession::onEvent()
     ->readFromBuffer
