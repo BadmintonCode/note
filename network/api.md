@@ -94,4 +94,43 @@ int close(int s);//0-succ -1-error
 ```
 
 
+######select()
 
+
+```c
+#include <sys/select.h>
+
+void FD_CLR(fd, fd_set *fdset);
+
+void FD_COPY(fd_set *fdset_orig, fd_set *fdset_copy);
+
+int FD_ISSET(fd, fd_set *fdset);
+
+void FD_SET(fd, fd_set *fdset);
+
+void FD_ZERO(fd_set *fdset);
+
+int select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds,
+         fd_set *restrict errorfds, struct timeval *restrict timeout);
+```
+
+
+######read()、write()
+>针对文件描述符
+```c
+#include <unistd.h>
+ssize_t read(int fd, void *buf, size_t count);
+ssize_t write(int fildes, const void *buf, size_t nbyte);
+```
+
+
+######recv()、send()
+>针对socket
+```c
+#include <sys/types.h>
+#include <sys/socket.h>
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+
+```
