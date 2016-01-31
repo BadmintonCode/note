@@ -118,7 +118,8 @@ Command
 
 ###2.3 tcp连接读写
 
-*   初次加入把tcp连接注册到reactor  
+*   初次加入把tcp连接注册到reactor    
+
 >在client构造时，调用MemcachedConnector::createSession创建tcp连接，加入到reactor
 
 ```java
@@ -132,7 +133,7 @@ MemcachedConnector::createSession(SocketChannel socketChannel, InetSocketAddress
     session.start() //把连接注册到reactor
 ```
 
-*   client 发送数据
+*   client 发送command
 
 ```java
 XMemcachedClient::get0()  //读取数据
@@ -170,7 +171,8 @@ XMemcachedClient::get0()  //读取数据
         ->Reactor::wakeup()
 ```
 
-*   写完command  
+*   写完command   
+
 >写完cmd，添加到session 里面的 队列(commandAlreadySent)里面去
 
 ```java
