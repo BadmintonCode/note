@@ -1,7 +1,8 @@
 ##网络API
 
-######htonx()、ntohx()
->字节序转换
+####htonx()、ntohx()
+_____
+字节序转换
 ```c
 #include <netinet/in.h>
 uint16_t htons(uint16_t host16bitvalue);//主机到网络
@@ -11,14 +12,16 @@ uint32_t ntohl(uint32_t net32bitvalue);
 ```
 
 
-######inet_addr()
->字符串IP地址转换为网络字节序的二进制地址
+####inet_addr()
+_____
+字符串IP地址转换为网络字节序的二进制地址
 ```c
 #include <arpa/inet.h>
 in_addr_t inet_addr(const char *str)
 ```
 
-######struct sockaddr_in
+####struct sockaddr_in
+_____
 ```c
 #include <netinet/in.h>
 struct sockaddr_in
@@ -132,5 +135,25 @@ ssize_t write(int fildes, const void *buf, size_t nbyte);
 
 ssize_t recv(int sockfd, void *buf, size_t len, int flags);
 ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+
+```
+
+
+###### bzero()
+
+```c
+#include <strings.h>
+void bzero(void *s, size_t n);
+```
+
+
+>最多写入size - 1 个字符，第size 个字符为 '\0'
+>返回值表示实际要写入在字符串，不包含'\0',如果返回值 >= size 表示 要写入的字符串偏长，超出部分被丢弃。
+
+```c
+#include <stdio.h>
+ int snprintf(char * restrict str, size_t size, const char * restrict format,
+         ...);
+
 
 ```

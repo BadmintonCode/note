@@ -1,4 +1,4 @@
-
+fault
 /*a bind function example*/
 
 #include <iostream>

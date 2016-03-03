@@ -61,22 +61,22 @@ static const struct eventop *eventops[] = {
 >event-internal.h
 ```c
 struct event_base {
-    const struct eventop *evsel;  //操作事件的接口
+    const struct eventop *evsel;  //指向全局数组eventops中的一个元素。也就是事件操作接口。
     void *evbase;
-    int event_count;        /* counts number of total events */
-    int event_count_active; /* counts number of active events */
-    int event_gotterm;      /* Set to terminate loop */
-    int event_break;        /* Set to terminate loop immediately */
-    struct event_list **activequeues;
-    int nactivequeues;
-    struct evsignal_info sig;
-    struct event_list eventqueue;
+    int event_count;        //事件总数
+    //就绪事件数,在event_queue_insert()中，将就绪事件添加到就绪队列时，会增加该计数。 
+    int event_count_active; 
+    int event_gotterm;      
+    int event_break;        
+    struct event_list **activequeues;//二维列表，存放就绪事件，下标是优先级，按优先级保存就绪的事件。
+    int nactivequeues; //就绪事件数
+    struct evsignal_info sig;  //信号处理有关的数据结构
+    struct event_list eventqueue;//保存注册事件
     struct timeval event_tv;
     struct min_heap timeheap;
     struct timeval tv_cache;
 };
 ```
-evsel:指向全局数组eventops中的一个元素。也就是事件操作接口。   
 evbase:与具体的evsel实现相关的数据结构，保存对应的一些信息，比如：select对应的数据结构就是
 ```c
 struct selectop {
@@ -90,13 +90,10 @@ struct selectop {
     struct event **event_w_by_fd;
 };
 ```
-event_count_active:表示就绪的事件数，在event_queue_insert()中，将就绪事件添加到就绪队列时，会增加该计数。   
-activequeues:事件二维列表，下标是优先级，按优先级保存就绪的事件。   
-eventqueue:保存所有的注册事件。   
 
 #### event
 
-用来描述关注的事件。
+事件结构体。
 
 ```c
 struct event {
@@ -139,9 +136,6 @@ ev_flags:表明其当前的状态，可能的值有:
 #define EVLIST_ALL  (0xf000 | 0x9f)  
 ```
 
-
-
-
 ###函数
 
 
@@ -168,15 +162,8 @@ struct event_base *event_base_new(void)
 {
     int i;
     struct event_base *base;
-    if ((base = calloc(1, sizeof(struct event_base))) == NULL)
-        event_err(1, "%s: calloc", __func__);
-    event_sigcb = NULL;
-    event_gotsig = 0;
-    detect_monotonic();
-    gettime(base, &base->event_tv);
-    
-    min_heap_ctor(&base->timeheap);
-    TAILQ_INIT(&base->eventqueue);
+    ...
+    TAILQ_INIT(&base->eventqueue);//初始化注册事件队列
     base->sig.ev_signal_pair[0] = -1;
     base->sig.ev_signal_pair[1] = -1;
     
@@ -185,9 +172,6 @@ struct event_base *event_base_new(void)
         base->evsel = eventops[i];  
         base->evbase = base->evsel->init(base);
     }
-    if (base->evbase == NULL)
-        event_errx(1, "%s: no event mechanism available", __func__);
-
     return (base);
 }
 ```
@@ -206,7 +190,6 @@ void event_set(struct event *ev, int fd, short events,
 {
     /* Take the current base - caller needs to set the real base later */
     ev->ev_base = current_base;
-
     ev->ev_callback = callback;
     ev->ev_arg = arg;
     ev->ev_fd = fd;
@@ -215,13 +198,6 @@ void event_set(struct event *ev, int fd, short events,
     ev->ev_flags = EVLIST_INIT;
     ev->ev_ncalls = 0;
     ev->ev_pncalls = NULL;
-
-    min_heap_elem_init(ev);
-
-    /* by default, we put new events into the middle priority */
-    if(current_base)
-        ev->ev_pri = current_base->nactivequeues/2;
-
 }
 ```
 
@@ -256,32 +232,13 @@ int event_add(struct event *ev, const struct timeval *tv)
 int event_del(struct event *ev)
 {
     struct event_base *base;
-    const struct eventop *evsel;
-    void *evbase;
-
-    /* An event without a base has not been added */
-    if (ev->ev_base == NULL)
-        return (-1);
-
     base = ev->ev_base;
-    evsel = base->evsel;
-    evbase = base->evbase;
 
-
-    /* See if we are just active executing this event in a loop */
-    if (ev->ev_ncalls && ev->ev_pncalls) {
-        /* Abort loop */
-        *ev->ev_pncalls = 0;
-    }
-
-    if (ev->ev_flags & EVLIST_TIMEOUT)
-        event_queue_remove(base, ev, EVLIST_TIMEOUT);
-
-    if (ev->ev_flags & EVLIST_ACTIVE)
+    if (ev->ev_flags & EVLIST_ACTIVE)// 移除就绪队列中的事件
         event_queue_remove(base, ev, EVLIST_ACTIVE);
 
     if (ev->ev_flags & EVLIST_INSERTED) {
-        event_queue_remove(base, ev, EVLIST_INSERTED);
+        event_queue_remove(base, ev, EVLIST_INSERTED); // 移除注册队列中的事件
         return (evsel->del(evbase, ev));
     }
 
@@ -293,8 +250,7 @@ int event_del(struct event *ev)
 #### event_base_loop
 
 事件轮询：
-调用底层事件接口的dipatch()将已经就绪的事件添加到就绪队列，然后对就绪队列中每个事件调用event_process_active()
-处理事件。
+调用底层事件接口的dipatch()获取已就绪的事件，并将就绪事件添加到就绪队列，然后对就绪队列中每个事件调用event_process_active()处理事件。
 其中flag有2个参数。
 
 ```c
@@ -306,23 +262,16 @@ int event_del(struct event *ev)
 int event_base_loop(struct event_base *base, int flags)
 {
     const struct eventop *evsel = base->evsel;
-    void *evbase = base->evbase;
-    struct timeval tv;
-    struct timeval *tv_p;
+    ...
     int res, done;
     done = 0;
-    while (!done) {
-        /* update last old time */
-        gettime(base, &base->event_tv);
-        /* clear time cache */
-        base->tv_cache.tv_sec = 0;
+    while (!done) {//轮询
+
         res = evsel->dispatch(base, evbase, tv_p);//把已经就绪的事件添加到就绪队列中
-
-
-        if (base->event_count_active) {// 
+        if (base->event_count_active) {//存在就绪事件
             event_process_active(base);//处理就绪事件
             if (!base->event_count_active && (flags & EVLOOP_ONCE))
-            //event_count_active == 0 表示事件处理完
+                //event_count_active == 0 表示事件处理完
                 done = 1;
         } else if (flags & EVLOOP_NONBLOCK)
             done = 1;
@@ -339,13 +288,7 @@ int event_base_loop(struct event_base *base, int flags)
 static int
 select_dispatch(struct event_base *base, void *arg, struct timeval *tv)
 {
-    
     for (j = 0; j <= sop->event_fds; ++j) {
-        struct event *r_ev = NULL, *w_ev = NULL;
-        if (++i >= sop->event_fds+1)
-            i = 0;
-
-        res = 0;
         if (FD_ISSET(i, sop->event_readset_out)) {
             r_ev = sop->event_r_by_fd[i];//读事件
             res |= EV_READ;
@@ -354,7 +297,7 @@ select_dispatch(struct event_base *base, void *arg, struct timeval *tv)
             w_ev = sop->event_w_by_fd[i];//写事件
             res |= EV_WRITE;
         }
-        //把写就绪事件放入队列
+        //把读就绪事件放入队列
         if (r_ev && (res & r_ev->ev_events)) {
             event_active(r_ev, res & r_ev->ev_events, 1);
         }
@@ -363,19 +306,14 @@ select_dispatch(struct event_base *base, void *arg, struct timeval *tv)
             event_active(w_ev, res & w_ev->ev_events, 1);
         }
     }
-    check_selectop(sop);
-
     return (0);
 }
 ```
-
-
 event_active()设置就绪事件的ev_res(表示就绪的事件类型)成员，把事件添加到就绪队列。
 
 ```
 void event_active(struct event *ev, int res, short ncalls)
 {
-    /* We get different kinds of events, add them together */
     if (ev->ev_flags & EVLIST_ACTIVE) {//已经在就绪事件队列里面，则不处理。
         ev->ev_res |= res;
         return;
@@ -390,44 +328,29 @@ void event_active(struct event *ev, int res, short ncalls)
 ```
 
 
-event_queue_insert() 用于将就绪事件添加到队列。
+event_queue_insert() 用于将事件添加到队列。
 
 ```c
 void event_queue_insert(struct event_base *base, struct event *ev, int queue)
 {
-    if (ev->ev_flags & queue) {
-        /* Double insertion is possible for active events */
-        if (queue & EVLIST_ACTIVE)
-            return;
-
-        event_errx(1, "%s: %p(fd %d) already on queue %x", __func__,
-               ev, ev->ev_fd, queue);
-    }
-
-    if (~ev->ev_flags & EVLIST_INTERNAL)
-        base->event_count++;
-
     ev->ev_flags |= queue;
     switch (queue) {
-    case EVLIST_INSERTED:
+    case EVLIST_INSERTED: //注册队列
         TAILQ_INSERT_TAIL(&base->eventqueue, ev, ev_next);
         break;
-    case EVLIST_ACTIVE:
+    case EVLIST_ACTIVE: //就绪队列
         base->event_count_active++;
         TAILQ_INSERT_TAIL(base->activequeues[ev->ev_pri],
             ev,ev_active_next);
         break;
-    case EVLIST_TIMEOUT: {
-        min_heap_push(&base->timeheap, ev);
-        break;
-    }
+   
     default:
         event_errx(1, "%s: unknown queue %x", __func__, queue);
     }
 }
 ```
 
-event_process_active() 用于触发激活事件上的回调。
+event_process_active() 用于触发就绪事件上的回调。
 
 ```c
 static void event_process_active(struct event_base *base)
@@ -444,12 +367,10 @@ static void event_process_active(struct event_base *base)
         }
     }
     for (ev = TAILQ_FIRST(activeq); ev; ev = TAILQ_FIRST(activeq)) {
-        if (ev->ev_events & EV_PERSIST)
+        if (ev->ev_events & EV_PERSIST)  //如果持久关注，只从就绪队列移除。
             event_queue_remove(base, ev, EVLIST_ACTIVE);
         else
             event_del(ev);
-        
-        /* Allows deletes to work */
         ncalls = ev->ev_ncalls;
         ev->ev_pncalls = &ncalls;
         while (ncalls) {
@@ -463,18 +384,17 @@ static void event_process_active(struct event_base *base)
 }
 ```
 
-
 ## 信号事件处理
 
 ### 数据结构
 
 ```c
 struct evsignal_info {
-    struct event ev_signal;
-    int ev_signal_pair[2];
-    int ev_signal_added;
+    struct ev_signal //; 关注socket pair读fd 上的读事件。
+    int ev_signal_pair[2];//socket pair 对
+    int ev_signal_added; //ev_signal是否已经注册
     volatile sig_atomic_t evsignal_caught;
-    struct event_list evsigevents[NSIG];
+    struct event_list evsigevents[NSIG]; //保存注册的信号事件
     sig_atomic_t evsigcaught[NSIG];
 #ifdef HAVE_SIGACTION
     struct sigaction **sh_old;
@@ -484,3 +404,123 @@ struct evsignal_info {
     int sh_old_max;
 };
 ```
+
+### 主要函数
+
+#### evsignal_init
+
+用于初始化信号事件相关的参数：初始化存储信号事件的队列（每个信号一个队列）。
+该函数在event_base初始化的时候调用。
+```c
+event_base_new();
+    evsel->init(base);
+        select_init(base);//以select为例
+            evsignal_init(base);
+```
+函数源码如下：
+```c
+int evsignal_init(struct event_base *base)
+{
+
+    if (evutil_socketpair(
+            AF_UNIX, SOCK_STREAM, 0, base->sig.ev_signal_pair) == -1) {//创建socket pair
+    }
+
+    base->sig.evsignal_caught = 0;
+    for (i = 0; i < NSIG; ++i)//初始化信号事件队列
+        TAILQ_INIT(&base->sig.evsigevents[i]);
+
+    event_set(&base->sig.ev_signal, base->sig.ev_signal_pair[1],
+        EV_READ | EV_PERSIST, evsignal_cb, &base->sig.ev_signal);//设置对socket pair中的读fd的读事件 
+    base->sig.ev_signal.ev_base = base;
+    base->sig.ev_signal.ev_flags |= EVLIST_INTERNAL;
+
+    return 0;
+}
+```
+
+#### evsignal_add
+
+添加信号事件：用于添加信号事件，同时会把 sig->ev_signal (关注read事件) 调用 event_add 进行注册。
+该函数在调用event_add时候会被调用。
+```c
+event_add();
+    evsel->add(evbase, ev);
+        select_add(void *arg, struct event *ev);
+            evsignal_add(ev);
+```
+函数源码如下：
+```c
+int evsignal_add(struct event *ev)
+{
+    int evsignal;
+    struct event_base *base = ev->ev_base;
+    struct evsignal_info *sig = &ev->ev_base->sig;
+
+    evsignal = EVENT_SIGNAL(ev); //ev->ev_fd
+    assert(evsignal >= 0 && evsignal < NSIG);
+    if (TAILQ_EMPTY(&sig->evsigevents[evsignal])) { //如果这个信号的事件第一次添加，初始化信号对应的队列。
+        //设置信号evsignal的处理函数evsignal_handler
+        if (_evsignal_set_handler(base, evsignal, evsignal_handler) == -1)
+            return (-1);
+        evsignal_base = base;
+        if (!sig->ev_signal_added) {//如果没有添加过ev_signal，则添加，这里只会调用一次。
+            if (event_add(&sig->ev_signal, NULL))
+                return (-1);
+            sig->ev_signal_added = 1;
+        }
+    }
+    TAILQ_INSERT_TAIL(&sig->evsigevents[evsignal], ev, ev_signal_next);//把信号事件注册到队列
+    return (0);
+}
+
+```
+
+```c
+static void
+evsignal_handler(int sig)
+{
+    evsignal_base->sig.evsigcaught[sig]++;
+    evsignal_base->sig.evsignal_caught = 1; //信号已产生
+    //往sig.ev_signal_pair[0] 写数据， 因为监听了sig.ev_signal_pair[1]的读事件，所以事件接口dispatch()会立即返回检测到信号已发送
+    send(evsignal_base->sig.ev_signal_pair[0], "a", 1, 0);
+    errno = save_errno;
+}
+```
+#### evsignal_process 
+
+处理信号事件，在底层事件接口调用dispatch()时候会触发。
+
+```c
+select_dispatch()
+        evsignal_process(base);
+```
+
+```c
+void
+evsignal_process(struct event_base *base)
+{
+    struct evsignal_info *sig = &base->sig;
+    struct event *ev, *next_ev;
+    sig_atomic_t ncalls;
+    int i;
+    
+    base->sig.evsignal_caught = 0;
+    for (i = 1; i < NSIG; ++i) {
+        ncalls = sig->evsigcaught[i];
+        if (ncalls == 0)
+            continue;
+        sig->evsigcaught[i] -= ncalls;
+
+        for (ev = TAILQ_FIRST(&sig->evsigevents[i]);
+            ev != NULL; ev = next_ev) {
+            next_ev = TAILQ_NEXT(ev, ev_signal_next);
+            if (!(ev->ev_events & EV_PERSIST))
+                event_del(ev);
+            event_active(ev, EV_SIGNAL, ncalls);
+        }
+
+    }
+}
+```
+
