@@ -476,13 +476,13 @@ int evsignal_add(struct event *ev)
 
 ```
 
+信号发生时，会调用evsignal_handler(),往sig.ev_signal_pair[0] 写数据，因为event_base注册了sig.ev_signal_pair[1]的读事件，所以事件接口dispatch()会立即返回检测到信号已发送。
 ```c
-static void
-evsignal_handler(int sig)
+static void evsignal_handler(int sig)
 {
     evsignal_base->sig.evsigcaught[sig]++;
     evsignal_base->sig.evsignal_caught = 1; //信号已产生
-    //往sig.ev_signal_pair[0] 写数据， 因为监听了sig.ev_signal_pair[1]的读事件，所以事件接口dispatch()会立即返回检测到信号已发送
+    //往sig.ev_signal_pair[0] 写数据
     send(evsignal_base->sig.ev_signal_pair[0], "a", 1, 0);
     errno = save_errno;
 }
