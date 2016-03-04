@@ -29,7 +29,7 @@ tcp连接
 
 ```
 AbstractSession  
-+writeQueue:Queue<WriteMessage> #保存要发送到server 的cmd  
++writeQueue:Queue<WriteMessage> #保存要发送到server 的command(get/set 等)  
 -start() # 把连接注册到 selectorManager  
 |  
 AbstractNioSession:AbstractSession  
@@ -133,14 +133,14 @@ MemcachedConnector::createSession(SocketChannel socketChannel, InetSocketAddress
     session.start() //把连接注册到reactor
 ```
 
-*   client 发送command
+*   client 发送get command
 
 ```java
-XMemcachedClient::get0()  //读取数据
+XMemcachedClient::get0()  //读取memcached中的数据
     XMemcachedClient::fetch0() 
-        commandFactory.createGetCommand()  //创建一个cmd
-        Session session = XMemcachedClient::sendCommand()  //发送cmd
-            MemcachedConnector::send(command)// 使用connector 发送cmd
+        commandFactory.createGetCommand()  //创建一个command
+        Session session = XMemcachedClient::sendCommand()  //发送command
+            MemcachedConnector::send(command)// 使用connector 发送command
                 MemcachedSession session = findSessionByKey()//这里会根据key查找对应的session
                 session.write(msg)
         XMemcachedClient::latchWait(final Command cmd, final long timeout, final Session session)//等待server响应
@@ -167,13 +167,13 @@ XMemcachedClient::get0()  //读取数据
 ->SelectorManager::registerSession(Session session, EventType event)
     ->找到session对应的reactor
     ->Reactor::registerSession(Session session, EventType event)
-        -> 如果不是reactor线程，把{session,event}写入register
+        -> 如果当前线程不是reactor线程，把{session,event}写入register，等reactor下一个回合注册事件处理
         ->Reactor::wakeup()
 ```
 
-*   写完command   
+*   写完command对应的指令到TCP连接   
 
->写完cmd，添加到session 里面的 队列(commandAlreadySent)里面去
+>写完command，添加到session 里面的 队列(commandAlreadySent)里面去
 
 ```java
 AbstractNioSession::onWrite()
@@ -215,8 +215,8 @@ int DYNAMIC_MAX_QUEUED_NOPS = (int) (MAX_QUEUED_NOPS * (Runtime
 
 
 
-##4 question
-*   1.read  操作没有加锁
-*   2.write 一直写，对于服务器的响应的msg，直接call 之前写入的 cmd，但是tcp 的顺序性怎么保证。
+##4 注意
+*   1.read操作（即使放在io读写线程中操作）没有加锁。
+*   2.write操作连续写，对于服务器的响应的msg，直接call 之前写入的command，并不会写入一个command指令后，阻塞等待服务器输出。
 
 

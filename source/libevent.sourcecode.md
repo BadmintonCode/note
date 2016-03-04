@@ -390,7 +390,7 @@ static void event_process_active(struct event_base *base)
 
 ```c
 struct evsignal_info {
-    struct ev_signal //; 关注socket pair读fd 上的读事件。
+    struct event ev_signal //; 关注socket pair读fd 上的读事件。
     int ev_signal_pair[2];//socket pair 对
     int ev_signal_added; //ev_signal是否已经注册
     volatile sig_atomic_t evsignal_caught;
@@ -476,7 +476,7 @@ int evsignal_add(struct event *ev)
 
 ```
 
-信号发生时，会调用evsignal_handler(),往sig.ev_signal_pair[0] 写数据，因为event_base注册了sig.ev_signal_pair[1]的读事件，所以事件接口dispatch()会立即返回检测到信号已发送。
+信号发生时，会调用evsignal_handler(),往sig.ev_signal_pair[0] 写数据，因为event_base注册了sig.ev_signal_pair[1]的读事件，所以事件接口dispatch()会立即返回检测到信号已发生。
 ```c
 static void evsignal_handler(int sig)
 {
