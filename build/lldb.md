@@ -3,6 +3,15 @@
  sudo apt-get install lldb-3.5   
  alias lldb="lldb-3.5"  #~/.bashrc
 ```
+
+coredump设置
+```
+ulimit -a 
+ulimit -c unlimited
+/cores/目录下
+
+lldb -c  [corefile]
+```
 #####attach
 ```
  (lldb) process attach --pid 9939  
@@ -46,11 +55,11 @@
 
 查看遍历
 ```
-   bt
+   bt  打印当前栈帧
    po  输出指针指向的对象
    p   输出基础变量
-   frame select $id # 使用bt 后跳转到某一帧
-
+   frame select [number] # 使用bt 后跳转到某一帧
+   frame variable [var] #查看某个变量，支持指针操作
    frame variable   #查看所有帧变量
 ```
 #####查看变量
@@ -67,6 +76,13 @@
  watch list
 ```
 
+
+#####thread
+
+```
+thread list
+thread select 2
+```
 
 ##### clang
 
