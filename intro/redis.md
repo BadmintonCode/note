@@ -19,7 +19,7 @@ MOVED 错误  #访问的key不在对应的节点，会输出该错误，包含�
 1.CLUSTER SETSLOT <slot> IMPORTING <source-node-id>  #在目标节点操作
 2.CLUSTER SETSLOT <slot> MIGRATING <destination-node-id>  #在源节点操作
 3.CLUSTER GETKEYSINSLOT <slot> <count> #最多获得key 列表
-4.MIGRATE <host> <port> <key> 0 <timeout> #0号数据库
+4.MIGRATE <host> <port> <key> 0 <timeout> #0-cluster只能使用0号数据库，原子操作。
 5.CLUSTER SETSLOT <slot> NODE <destination-node-id>
 
 3、4 一直操作直到迁移完。
