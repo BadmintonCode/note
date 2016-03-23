@@ -1,0 +1,6 @@
+gradle wrapper
+gradlew eclipse
+
+
+http://scala-ide.org/download/sdk.html
+http://downloads.typesafe.com/scalaide-pack/4.3.0-vfinal-luna-211-20151201/scala-SDK-4.3.0-vfinal-2.11-macosx.cocoa.x86.zip

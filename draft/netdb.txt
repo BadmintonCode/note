@@ -1,0 +1,62 @@
+ClusterManager
+
+    StateManager
+        MasterNodeStatus、/$cluster/status_master/master
+        DataNodeStatus：/$cluster/status_dnode
+        ClientNodeStatus、/$cluster/status_client/client-    #登陆的用户
+        AdminNodeStatus  /$cluster/status_admin/admin-
+
+MetaDataManager
+    DatabaseMetaData   
+        DataNodeMetaData  /$cluster/metadata_dnode          ->DataNode
+        TableMetaData    /$cluster/metadata_table/$nettable   ->NetTable  (data - >NetTableDefinition)
+                         /$cluster/metadata_table/$nettable/$tablet    ->Tablet     (data->TabletDefinition)                
+                         TabletDefinition 有 Map<String,ReplicaMode> 表示replica 存在哪些DataNode上。
+
+
+Column是Cassandra中最小的数据单元。它是一个3元的数据类型，包含：name，value和timestamp。
+SUPERCOLUMN
+
+我们可以将SuperColumn想象成Column的数组，它包含一个name，以及一系列相应的Column。
+
+将一个SuperColumn用JSON的形式表现如下：
+
+   1: {   // 这是一个SuperColumn
+   2:     name: "逖靖寒的世界",
+   3:     // 包含一系列的Columns
+   4:     value: {
+   5:         street: {name: "street", value: "1234 x street", timestamp: 123456789},
+   6:         city: {name: "city", value: "san francisco", timestamp: 123456789},
+   7:         zip: {name: "zip", value: "94107", timestamp: 123456789},
+   8:     }
+   9: }
+
+Columns和SuperColumns都是name与value的组合。最大的不同在于Column的value是一个“string”，而SuperColumn的value是Columns的Map。
+
+还有一点需要注意的是：SuperColumn’本身是不包含timestamp的。
+
+COLUMNFAMILY
+
+ColumnFamily是一个包含了许多Row的结构，你可以将它想象成RDBMS中的Table。
+
+每一个Row都包含有client提供的Key以及和该Key关联的一系列Column。
+
+我们可以看看结构：
+
+
+
+
+NetClient
+DatabaseProxy.openStandardTable
+
+StandaryTableImpl.internal_gets
+
+    public Row readProtocol(String table, String key, byte[] superColumn,
+            List<byte[]> columnNames, int read)
+
+转成一个List<Command> 实际上只有一个元素。
+
+对每一个 ReadCommand 调用
+SliceByKeyReadCommand
+    public Row getRow(Table table) throws IOException
+ReadLocalCallable

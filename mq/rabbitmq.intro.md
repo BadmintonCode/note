@@ -1,3 +1,5 @@
+### RabbitMQ简介
+
 #### 1.基本概念
 
 * Broker：简单来说就是消息队列服务器实体。
@@ -9,6 +11,8 @@
 * channel：消息通道，在客户端的每个连接里，可建立多个channel，每个channel代表一个会话任务。
 
 rabbitmq 架构如下：
+
+![image](/Users/gwei/Documents/sourcecode/demo/note/mq/rabbitmq.jpg)
 
 
 #### 2 实例
@@ -280,9 +284,9 @@ Consumer Cancellation Notification：x-cancel-on-ha-failover 设置为true，可
 >http://www.rabbitmq.com/configure.html
 >http://www.rabbitmq.com/configure.html#config-items
 
-environment variables
+*   environment variables
 
-a configuration file
+*   configuration file
 
 
 

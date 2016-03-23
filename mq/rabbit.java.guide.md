@@ -1,4 +1,6 @@
-####java client 使用规范
+### Java Client 使用手册
+
+#### 1 java client 使用规范
 
 
 ##### 1.1 创建tcp连接
@@ -77,7 +79,7 @@ void basicCancel(String consumerTag) throws IOException; 取消消费者
 ```
 
 
-#### 2.要点
+#### 2 要点
 
 
 ##### 2.1 生产者waitForConfirms /waitForConfirmsOrDie

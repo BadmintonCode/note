@@ -9,10 +9,8 @@ version:1.4.14b
 #### eventop
 定义如下，该结构体定义了一类事件操作的接口。
 具体的实现依赖于各个平台，目前有select、epoll等。全部放在了一个静态全局数组eventops中。  
-
->event-internal.h
-
 ```c
+event-internal.h
 struct eventop {
     const char *name;
     void *(*init)(struct event_base *);   //初始化
@@ -23,9 +21,8 @@ struct eventop {
     int need_reinit;/* set if we need to reinitialize the event base */
 };
 ```
-
->event.c
 ```c
+event.c
 static const struct eventop *eventops[] = {
 #ifdef HAVE_EVENT_PORTS
     &evportops,
@@ -52,14 +49,12 @@ static const struct eventop *eventops[] = {
 };
 ```
 
-
-
 #### event_base
 
 事件操作器，一个核心结构体，用来管理注册事件队列，就绪事件队列。
 
->event-internal.h
 ```c
+event-internal.h
 struct event_base {
     const struct eventop *evsel;  //指向全局数组eventops中的一个元素。也就是事件操作接口。
     void *evbase;
@@ -523,4 +518,9 @@ evsignal_process(struct event_base *base)
     }
 }
 ```
+
+
+## 要点
+#### 链表中删除事件的时间复杂度
+每个事件结构体有几个next指针，分别与所在队列有关，记录队列下一个元素，所以是O(1)
 

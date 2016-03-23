@@ -1,10 +1,12 @@
-#####安装
+##lldb
+
+#### 安装
 ```
  sudo apt-get install lldb-3.5   
  alias lldb="lldb-3.5"  #~/.bashrc
 ```
 
-coredump设置
+#### coredump设置
 ```
 ulimit -a 
 ulimit -c unlimited
@@ -12,7 +14,7 @@ ulimit -c unlimited
 
 lldb -c  [corefile]
 ```
-#####attach
+#### attach
 ```
  (lldb) process attach --pid 9939  
  (lldb) process attach --name Safari
@@ -22,7 +24,7 @@ lldb -c  [corefile]
   c # 设置断点等参数后继续运行
 ```
 
-#####查看代码
+#### 查看代码
 
 ```
  l|list  
@@ -31,7 +33,7 @@ lldb -c  [corefile]
  list $filename  好像文件名不用包含路径
 ```
 
-#####断点
+#### 断点
 
 ```
   breakpoint set --file $file --line $line
@@ -45,7 +47,7 @@ lldb -c  [corefile]
   breakpoint enable $id
   breakpoint delete $id
 ```
-#####运行
+#### 运行
 ```
   run
   next | n
@@ -62,13 +64,13 @@ lldb -c  [corefile]
    frame variable [var] #查看某个变量，支持指针操作
    frame variable   #查看所有帧变量
 ```
-#####查看变量
+#### 查看变量
 ```
     frame variable this->root
     (simple::TreeNode<int> *) this->root = 0x0000000100104b80
 ```
 
-#####watch 
+#### watch 
 ```
  # 找到一个可以访问的变量，设置即可
  watch set var global
@@ -77,14 +79,14 @@ lldb -c  [corefile]
 ```
 
 
-#####thread
+#### thread
 
 ```
 thread list
 thread select 2
 ```
 
-##### clang
+#### clang
 
 ```
 clang++ Hello.cpp -o Hello.out  -std=c++11 -stdlib=libc++ -g

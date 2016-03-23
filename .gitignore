@@ -1,3 +1,6 @@
 *.out
 *.o
 debug*
+/temp
+/nginx
+test.md
