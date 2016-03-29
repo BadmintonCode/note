@@ -234,12 +234,12 @@ class DefaultChannelConfig implements ...{
 }
 ```
 
-从TCP读数据：读事件触发新分配一个用于读的buffer写数据，rcvBufAllocator 指定分配用于读的buffer的大小策略，有如下2种：
+从TCP读数据：读事件触发新分配一个buffer用于保存读到的数据（每次读都会新分配一个），rcvBufAllocator 指定分配用于读的buffer的大小策略，有如下2种：
 ```
 AdaptiveRecvByteBufAllocator：动态大小
 FixedRecvByteBufAllocator：固定
 ```
-往TCP写数据： 数据先写到`ChannelOutboundBuffer` buffer中，每个Channel使用固定的一个，在成员unsafe中定义并初始化。
+往TCP写数据： 数据先写到`ChannelOutboundBuffer` buffer中，每个Channel使用固定的一个（在Channel生命周期只使用一个），在成员unsafe中定义并初始化。
 
 *   Channel底层的java.net.Socket相关的参数
 
@@ -320,7 +320,7 @@ int ST_TERMINATED = 5;
 * 其中ServerBootstrap中的childHanler（也就是这里的`new HttpHelloWorldServerInitializer()`），会被添加到client请求建立的连接NioSocketChannel中。
 * `ChannelInitializer`是一个比较特殊的handler，这个handler在channelRegistered()方法中，会调用initChannel()
 添加hanlder，同时会把自己remove掉。
-* 一般给NioSocketChannel添加handler可以通过`ChannelInitializer`实现，如果要保存一些私有数据（channel级别）必须保证添加的handler都是新的实例。
+* 一般给NioServerSocketChannel/NioSocketChannel添加handler可以通过`ChannelInitializer`实现，如果要保存一些私有数据（channel级别）必须保证添加的handler都是新的实例。
 
 ```java
 //HttpHelloWorldServer
@@ -363,17 +363,18 @@ public class HttpHelloWorldServerInitializer extends ChannelInitializer<SocketCh
 ```
 
 ## 其他 
-#### AttributeMap 
+##### AttributeMap 
 Channel 都继承了AttributeMap，AttributeMap可以存储channel相关的数据。
-#### Promise
+##### Promise
 Promise 构造的时候，会传递一个EventLoop进去，会在Promise异步等待执行结果时，检测线程上下文，防止在EventLoop中等待。
-#### DefaultChannelGroup
+##### DefaultChannelGroup
 提供了一组管理Channel的方法
-#### 线程上线文
+##### 线程上线文
 很多组件内部都存在一个EventLoop，很多outbound事件都会转移到pipeline上操作。  
 Channel上执行write，会间接调用pipeline的write操作  
 ChannelHandler 方法中，调用Context的write操作，同样会间接调用pipeline的write操作  
-
+##### 设置Channel的属性
+ServerBootstrap中分别添加 handler/childHandler(ChannelInitializer类型)，server会在构造channel时调用initChannel方法，可以在此方法中实现必要的逻辑。
 
 
 
