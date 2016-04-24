@@ -1,6 +1,6 @@
 ## ChannelPipeline
 
-用于处理channel上的事件。
+用于处理Channel上的事件。
 
 * 每个Channel中都会有一个成员pipeline
 * 默认类型为DefaultChannelPipeline，在channel构造函数中初始化。
@@ -100,7 +100,7 @@ piple上发起的调用执行逻辑会放到channel所属的线程上下文去�
 一般用户编写代码可以持有AbstractChannelHandlerContext，该对象的方法调用逻辑同pipeline。
 
 ####pipeline上保存数据
-因为TCP发送的数据包，不可能一次读完，需要把数据先缓冲，下次再添加解析。Netty提供的ChannelHandler，可以完成此功能。
+因为TCP发送的数据包以流的形式发送，不可能一次读到完整的应用层数据包，需要把数据先缓冲，下次再添加解析。Netty提供的ChannelHandler，可以完成此功能。
 ```java
 public interface ChannelHandler {
     void handlerAdded(ChannelHandlerContext ctx) throws Exception;
@@ -112,8 +112,8 @@ public interface ChannelHandler {
 *   创建一个实现了ChannelHandler的子类
 *   在Hanlder定义一个私有的Buffer。
 *   `handlerAdded()`  创建Buffer。
-*   `handlerRemoved()` 释放Buffer(Netty 有些buffer利用了内存池)的引用计数。
+*   `handlerRemoved()` 释放Buffer(本身JVM GC可以回收，但是Netty有些buffer使用内存池实现，为了保证统一)的引用计数。
 *   在Channel处理话的时候，添加一个此Handler实例。
 
-原理：在每个Channel初始化，添加Handler的时候，会调用handlerAdded()；当channel关闭的时候会移除handler，进而调用handlerRemoved()方法。
-
+原理：在每个Channel初始化，添加Handler的时候，会调用handlerAdded()；当channel关闭的时候会移除handler，进而调用handlerRemoved()方法。   
+注意：必须保证对每个新建立的Channel，设置一个新的ChannelHandler实例。

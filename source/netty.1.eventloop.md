@@ -18,7 +18,7 @@ NioEventLoopGroup
  Math.max(1, SystemPropertyUtil.getInt("io.netty.eventLoopThreads", Runtime.getRuntime().availableProcessors() * 2));
 ```
 * 内部有个children的数组成员，用于保存创建的线程，线程创建见`MultithreadEventExecutorGroup`的构造方法。
-* 提供了两种方法提交任务，在内部会选择其中一个EventLoop进行提交，如下。
+* 提供了两种方法提交任务，Group内部会选择其中一个EventLoop进行提交，如下。
 
 ```java
 public ChannelFuture register(Channel channel)
@@ -27,10 +27,11 @@ public Future<?> submit(Runnable task)
 
 ## EventLoop
 
-执行任务的具体线程，主要是一些IO任务。这里以NioEventLoop为例。
+执行任务的具体线程，主要是一些IO任务（accept/read/write/close/shutdown）。这里以NioEventLoop为例。
 
-* 一个EventLoop管理多个channel，并且这种关系是固定的
+* 一个EventLoop管理多个Channel，并且这种关系建立好了以后是固定的。
 * 如果使用NioEventLoopGroup，child类型为NioEventLoop。
+* 一个Channel相关的操作，都由对应的EventLoop处理，避免并发。
 
 NioEventLoop类继承关系如下：
 ```java
@@ -45,12 +46,12 @@ SingleThreadEventLoop
 |
 NioEventLoop
 ```
- `EventLoopGroup.submit(Runnable r)`提交task，最后会调用`EventLoop.execute()`来提交。
+ `submit(Runnable r)`提交task，最后会调用`EventLoop.execute()`来提交。
  提交时会使用__EventLoop.inEventLoop()__来判断，如果当前是Loop线程立即执行，否则放到taskQueue队列；   
  `register(Channel channel)`同理，用于注册Channel，如果非Loop线程，会封装成一个task提交，具体逻辑可以见：
 
 ```java
-//AbstractChannel
+//AbstractChannel.java
 public final void register(EventLoop eventLoop, final ChannelPromise promise) 
 ```
 

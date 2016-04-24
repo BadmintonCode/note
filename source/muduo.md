@@ -40,37 +40,40 @@ ___
 
 主要有4种状态：`kDisconnected`, `kConnecting`, `kConnected`, `kDisconnecting`。 
 
-关闭连接需要设置连接状态、取消关注事件、回调callback移除连接、关闭fd。除“关闭fd”外，其他操作都可以在`Connection.cc`中看到。这里`kDisconnecting` 用于处理“server发起关闭请求后，输出buffer中还有数据的情况”，在`kDisconnecting`状态下，不能再调用send，只需要发完输出buffer中的数据，再关闭TCP写入。等到Client发起写关闭，Server在handleRead()中收到读关闭，调用handleClose()。
-
-对于关闭fd，这里使用在Connection回收时候（closeCallback中），因为没有引用，进而导致Socket被回收，Socket析构函数中关闭fd。如果提前调用close()关闭fd，可能导致新的请求利用刚回收的fd，导致数据错乱。
-
-shutdown()比forceClose()关闭连接平滑。
-
 
 * kConnecting:  `new TcpConnection()`里设置。
 * kConnected:`TcpConnection::connectEstablished()`里面设置。
 * kDisconnecting:`TcpConnection::shutdown()`里设置。
-* shutdown()：在`kConnected`状态才能执行，设置为`kDisconnecting`，异步调用`shutdownInLoop()`;
+
+
+
+### 关闭连接
+___
+
+需要设置连接状态、取消关注事件、回调callback移除连接、关闭fd。    
+除“关闭fd”外，其他操作都可以在`Connection.cc`中看到。
+#### 关闭fd
+
+这里使用在Connection回收时候（closeCallback中），因为没有引用，进而导致Socket被回收，Socket析构函数中关闭fd。如果提前调用close()关闭fd，可能导致新的请求利用刚回收的fd，导致数据错乱。
+
+#### 主要函数
+* shutdown()：在`kConnected`状态才能执行，设置为`kDisconnecting`，EventLoop队列中加入`shutdownInLoop()`。 此时，不能再直接调用send往EventLoop发送数据。
 * shutdownInLoop():如果当前没有关注写事件，使用`shutdown(sockfd, SHUT_WR)`关闭socket写入;
 * forceClose():在`kConnected`、`kDisconnecting`状态下，设置状态为`kDisconnecting`,异步调用forceCloseInLoop();
-* forceCloseInLoop()：在`kConnected`、`kDisconnecting`状态下，调用`handleClose()`;
-* handleClose()  
-1.`kConnected`,`kDisconnecting` 2种状态下调用，并且`setState(kDisconnected)`     
-2.取消关注的任何事件   
-3.回调closeCallback   
+* forceCloseInLoop()：在`kConnected`、`kDisconnecting`状态下，调用`handleClose()`。
+* handleClose() ：`kConnected`,`kDisconnecting` 2种状态下调用，并且`setState(kDisconnected)`  ；取消关注的任何事件；回调closeCallback   
 * handleError()：无关闭操作。
+* handleRead()：`read()`如果发现客户端关闭连接，调用`handleClose()`,如果发生异常，调用` 
+handleError()`，空操作。
+*handleWrite()：如果buffer里面的数据写完，并且当前状态是`kDisconnecting`，调用`shutdownInLoop()`;
 
 
-##### 读操作
-handleRead()中`read()`如果发现客户端关闭连接，调用`handleClose()`,如果发生异常，调用`handleError()`;
+#### 关闭流程
 
-##### 写操作
-只有在`kConnected`下才能调用`send()`发送数据。   
-`handleWrite()`中，如果buffer里面的数据写完，并且当前状态是`kDisconnecting`，调用`shutdownInLoop()`;
+* 主动关闭写，两种情况   
+1.shudown()->队列中写任务全部执行完,没有关注写事件->shutdownInLoop()->关闭写入   
+2.shudown()->队列中写任务没有执行完，outputbuffer有数据，此时必定关注了写事件->shutdownInLoop()不关闭写入->handleWrite()发现关注了写事件，并且buffer为空，并且当前状态为"正在关闭中"，关闭写入
 
-
-
-
-
-
+* 读到Client关闭写
+handleRead()读取到client关闭写，直接调用handleClose()，移除connection
 

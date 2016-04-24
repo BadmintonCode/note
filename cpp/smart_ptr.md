@@ -12,7 +12,7 @@
 ```
 1.用于shared_ptr 管理类的基类，可以在类中通过shared_from_this()获取当前的 shared_ptr。
 2.不能在构造函数中调用。此时weak_ptr还没初始化。
-3.必须要先在栈上构造一个shared_ptr 。
+3.不能使用new构造shared_ptr 。
 4.实现原理：
 enable_shared_from_this 内部有个weak_ptr，假如类C是enable_shared_from_this的派生类，
 在构造shared_ptr<C>时候，会调用enable_shared_from_this上的一个函数构造内部的weak_ptr,

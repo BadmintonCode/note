@@ -3,8 +3,8 @@
 
 主要用来执行accept。 以这个类举例。   
 
-* 如何构造pipeline成员，见`ServerBootstrap.init()`方法。   
-* 具体逻辑为：添加了一个handler，这个handler在channel(处理accpet的channel)初始化时候会被调用，被用来再添加一个handler（类型为ServerBootstrapAcceptor）。
+* 设置Channel的pipeline成员，见`ServerBootstrap.init()`方法。   
+* 具体逻辑为：添加了一个handler，这个handler在Channel(处理accpet的Channel，也就是自己)初始化时候会被调用，被用来再添加一个handler（类型为ServerBootstrapAcceptor）。
 ```java
     p.addLast(new ChannelInitializer<Channel>() {
             @Override
@@ -22,10 +22,10 @@
 
 ServerBootstrapAcceptor主要用来   
 
-*  执行accept操作获取channel(处理read/write)
-*  设置channel(read/write)的TCP属性
-*  为channel(read/write) 添加新的handler
-*  选择group并将channel(read/write) register注册到EvenLoop中。
+*  执行accept操作获取Channel(代表一个Client连接，用来处理read/write)
+*  设置Channel(read/write)的TCP属性
+*  为Channel(read/write) 添加新的handler
+*  选择Group并将Channel(read/write) register注册到EvenLoop中。
 
 
 ## NioSocketChannel
@@ -73,7 +73,7 @@ FixedRecvByteBufAllocator：固定
 ```
 
 
-往TCP写数据： 数据先写到`ChannelOutboundBuffer` buffer中，每个Channel使用固定的一个（在Channel生命周期只使用一个），在成员unsafe中定义并初始化。
+往TCP写数据： 数据先写到`ChannelOutboundBuffer` buffer中（每个Channel使用固定的一个，并且生命周期只使用一个），在成员unsafe中定义并初始化。
 
 一般调用write写buffer时候，写到ChannelOutboundBuffer之前会判断是否是DirectBuffer，如果不是会进行转化，
 见`AbstractNioByteChannel.filterOutboundMessage`。
