@@ -1,5 +1,130 @@
 #Memcached
 version:1.4.24
+## 
+
+![image](https://github.com/elwin0214/note/blob/master/source/memcached.jpg?raw=true)
+
+## slab
+
+#### 初始化
+`main()`会调用`slabs_init()`初始化。如果是预先分配，会事先把需要占用的内存一次找OS malloc，否则在需要的时候再去malloc。 
+
+```c
+settings.item_size_max = 1024 * 1024;//slab内存页的大小。单位是字节，-I指定
+settings.maxbytes = 64 * 1024 * 1024; //memcached能够使用的最大内存，-m指定  
+settings.factor = 1.25; //item的扩容因子 ，-f指定
+settings.chunk_size = 48; //最小的一个item能存储多少字节的数据(set、add命令中的数据)  
+```
+
+
+```c
+//主要变量
+static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
+static size_t mem_limit = 0;
+static size_t mem_malloced = 0;/*记录已经分配的内存量*/
+static int power_largest;/*指向管理最大item的slabclass_t*/
+
+static void *mem_base = NULL; /*预先分配时有意义，表示预先分配的内存的地址*/
+static void *mem_current = NULL;/*预先分配时有意义，表示还可以使用的内存地址*/
+static size_t mem_avail = 0; /*预先分配时有意义，表明还有多少内存可以使用*/
+```
+
+初始化的时候会计算每个slabclass_t中负责的item大小。
+```c
+unsigned int size = sizeof(item) + settings.chunk_size;//最小的item存储大小
+
+while(...)
+{
+if (size % CHUNK_ALIGN_BYTES) size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);//对齐
+slabclass[i].size = size;
+slabclass[i].perslab = settings.item_size_max / slabclass[i].size;//计算item个数
+size *= factor;
+}
+```
+
+#### slab锁
+这里涉及到2个锁，其中slab_lock，从slabclass_t中获取item，释放item时都会对它加锁。
+```c
+//slab.c
+static pthread_mutex_t slabs_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t slabs_rebalance_lock = PTHREAD_MUTEX_INITIALIZER;
+```
+
+#### 分配item流程
+获取item时候，先根据item大小定位到对应的`slabclass_t`，在成员`slots`对应的列表中查找，如果查找不到再申请分配内存。
+分配到内存后，划分为item，放入slabclass_t中。
+
+```c
+//slab.c
+//分配item
+void *slabs_alloc(size_t size, unsigned int id, unsigned int *total_chunks) {
+    void *ret;
+    pthread_mutex_lock(&slabs_lock);
+    ret = do_slabs_alloc(size, id, total_chunks);
+    pthread_mutex_unlock(&slabs_lock);
+    return ret;
+}
+//释放item
+void slabs_free(void *ptr, size_t size, unsigned int id) {
+    pthread_mutex_lock(&slabs_lock);
+    do_slabs_free(ptr, size, id);
+    pthread_mutex_unlock(&slabs_lock);
+}
+```
+
+## LRU
+
+#### 链表
+
+链表按item大小分类。
+
+```c
+
+//items.c
+static item *heads[LARGEST_ID];
+static item *tails[LARGEST_ID];
+static unsigned int sizes[LARGEST_ID];//LRU链表元素个数
+
+```
+
+
+####链表锁
+
+```c
+//thread.c
+pthread_mutex_t lru_locks[POWER_LARGEST];
+```
+item_link_q 和 item_unlink_q 均会对链表加锁。
+```
+/*对LRU链接加锁，将item添加到LRU头部*/
+static void item_link_q(item *it) {
+    pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
+    do_item_link_q(it);
+    pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
+}
+/*对LRU链接加锁，并移除item*/
+static void item_unlink_q(item *it) {
+    pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
+    do_item_unlink_q(it);
+    pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
+}
+```
+
+#### item过期处理
+
+`do_item_get()` ：发现item失效、或者过期都会回收到slab中。   
+`do_item_alloc()`：在配置`settings.lru_maintainer_thread=false`的情况下，  
+
+* 从链表尾部开始，回收过期、失效的item到slab池中，循环5次；
+* 调用`slab_alloc()` 分配，如果分配成功返回，如果分配不成功，下一步；
+* 从链表尾部开始，回收过期、失效的item，回收一个`continue;`；踢掉尾部元素（并不一定过期），踢掉一个`break;`，循环5次；
+
+上述过程循环5次，直到能成功分配item。
+对于`exptime=0` 的item，不会过期，但是如果空间不够还是会被踢掉。
+```c
+//见lru_pull_tail()
+settings.evict_to_free //如果设置为0 则不会踢掉 exptime=0 的item。
+```
 
 ## 哈希表
 #### 初始化
@@ -76,112 +201,6 @@ void item_lock(uint32_t hv) {
 
 ```
 
-## slab
-
-#### 初始化
-main()会调用`slabs_init()`初始化。如果是预先分配，会事先把需要占用的内存一次找OS malloc，不然需要的时候再去malloc。 
-
-```c
-settings.item_size_max = 1024 * 1024;//slab内存页的大小。单位是字节，-I指定
-settings.maxbytes = 64 * 1024 * 1024; //memcached能够使用的最大内存，-m指定  
-settings.factor = 1.25; //item的扩容因子 ，-f指定
-settings.chunk_size = 48; //最小的一个item能存储多少字节的数据(set、add命令中的数据)  
-```
-
-
-```c
-//主要变量
-static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
-static size_t mem_limit = 0;
-static size_t mem_malloced = 0;/*记录已经分配的内存量*/
-static int power_largest;/*指向管理最大item的slabclass_t*/
-
-static void *mem_base = NULL; /*预先分配时有意义，表示预先分配的内存的地址*/
-static void *mem_current = NULL;/*预先分配时有意义，表示还可以使用的内存地址*/
-static size_t mem_avail = 0; /*预先分配时有意义，表明还有多少内存可以使用*/
-```
-
-初始化的时候会计算每个slabclass_t中负责的item大小。
-```c
-unsigned int size = sizeof(item) + settings.chunk_size;//最小的item存储大小
-
-while(...)
-{
-if (size % CHUNK_ALIGN_BYTES) size += CHUNK_ALIGN_BYTES - (size % CHUNK_ALIGN_BYTES);//对齐
-slabclass[i].size = size;
-slabclass[i].perslab = settings.item_size_max / slabclass[i].size;//计算item个数
-size *= factor;
-}
-```
-
-### 主要操作
-获取item时候，先根据item大小定位到对应的`slabclass_t`，在成员`slots`对应的列表中查找，如果查找不到再申请分配一个slab。
-分配到内存后，划分为item，放入slabclass_t中。
-
-
-### slab锁
-这里涉及到2个锁，其中slab_lock，从slabclass_t中获取item，释放item时都会对它加锁。
-```c
-//slab.c
-static pthread_mutex_t slabs_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t slabs_rebalance_lock = PTHREAD_MUTEX_INITIALIZER;
-```
-
-```c
-//slab.c
-//分配item
-void *slabs_alloc(size_t size, unsigned int id, unsigned int *total_chunks) {
-    void *ret;
-    pthread_mutex_lock(&slabs_lock);
-    ret = do_slabs_alloc(size, id, total_chunks);
-    pthread_mutex_unlock(&slabs_lock);
-    return ret;
-}
-//释放item
-void slabs_free(void *ptr, size_t size, unsigned int id) {
-    pthread_mutex_lock(&slabs_lock);
-    do_slabs_free(ptr, size, id);
-    pthread_mutex_unlock(&slabs_lock);
-}
-```
-
-## LRU
-
-### 链表
-
-链表按item大小分类。
-
-```c
-
-//items.c
-static item *heads[LARGEST_ID];
-static item *tails[LARGEST_ID];
-static unsigned int sizes[LARGEST_ID];//LRU链表元素个数
-
-```
-
-
-###链表锁
-
-```c
-//thread.c
-pthread_mutex_t lru_locks[POWER_LARGEST];
-```
-item_link_q 和 item_unlink_q。
-```
-/*对LRU链接加锁，将item添加到LRU头部*/
-static void item_link_q(item *it) {
-    pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
-    do_item_link_q(it);
-    pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
-}
-/*对LRU链接加锁，并移除item*/
-static void item_unlink_q(item *it) {
-    pthread_mutex_lock(&lru_locks[it->slabs_clsid]);
-    do_item_unlink_q(it);
-    pthread_mutex_unlock(&lru_locks[it->slabs_clsid]);
-}
-```
 
 ## 读写操作
 
@@ -258,7 +277,7 @@ item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbyt
 ```
 
 
-数据读完以后再调用 complete_nread_ascii，如下代码，即使当前set的item正在被某个client读取，这里并没有把item释放到slab中
+数据读完以后再调用 complete_nread_ascii，如下代码，即使当前set的item正在被某个client读取，这里并没有把item删除掉
 ，而是在新的item放入LRU之前，把旧的item在hashtable、LRU链表中删除。
 ```c
 void complete_nread_ascii(conn *c)
@@ -275,9 +294,5 @@ void complete_nread_ascii(conn *c)
     ->item_unlock(hv);
 ->item_remove(c->item); 
 
-```   
-
-## item相关对象
-![image](https://github.com/elwin0214/note/blob/master/source/memcached.jpg?raw=true)
-
+```     
 
