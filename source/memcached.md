@@ -115,7 +115,7 @@ size *= factor;
 ```
 
 ### 主要操作
-获取item时候，先根据item大小定位到对应的`slabclass_t`，在成员`slots`对应的列表中查找，如果查找不到再申请分配内存。
+获取item时候，先根据item大小定位到对应的`slabclass_t`，在成员`slots`对应的列表中查找，如果查找不到再申请分配一个slab。
 分配到内存后，划分为item，放入slabclass_t中。
 
 
@@ -258,7 +258,7 @@ item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbyt
 ```
 
 
-数据读完以后再调用 complete_nread_ascii，如下代码，即使当前set的item正在被某个client读取，这里并没有把item删除掉
+数据读完以后再调用 complete_nread_ascii，如下代码，即使当前set的item正在被某个client读取，这里并没有把item释放到slab中
 ，而是在新的item放入LRU之前，把旧的item在hashtable、LRU链表中删除。
 ```c
 void complete_nread_ascii(conn *c)
@@ -275,5 +275,9 @@ void complete_nread_ascii(conn *c)
     ->item_unlock(hv);
 ->item_remove(c->item); 
 
-```     
+```   
+
+## item相关对象
+![image](https://github.com/elwin0214/note/blob/master/source/memcached.jpg?raw=true)
+
 
