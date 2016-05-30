@@ -109,19 +109,64 @@ basicNack(long deliveryTag, boolean multiple, boolean requeue)//消费者在消�
 
 
 
-* 建议consumer producer 独占channel 使用。在某些情况下 channel 并不是线程安全的。
+* 建议producer 独占channel 使用。在某些情况下 channel 并不是线程安全的。
 * channel 与 connection 是多对一的关系，一个connection表示一个tcp 连接。
 
-
-
- 
 _Channels and Concurrency Considerations (Thread Safety)
 Channel instances must not be shared between threads. 
 Applications should prefer using a Channel per thread instead of sharing the same  Channel across multiple threads. While some operations on channels are safe to invoke concurrently, some are not and will result in incorrect frame interleaving on the wire. Sharing channels between threads will also interfere with_
+
+* Consumer的并发控制，并发的上限由线程池线程数和Channel的最小值决定
+```java
+//client代码
+//WorkPool维持了一个键值对，键为Channel，值为Queue，Queue中存放Channel收到的要传递给Consumer处理的逻辑。
+//runnable 封装了对Consumer的handleDelivery方法的调用
+//channel收到broker发来的消息后调用此方法
+public void addWork(Channel channel, Runnable runnable) { 
+    if (this.workPool.addWorkItem(channel, runnable)) {//这里控制对每一个channle同时只有一个线程在执行
+        this.executor.execute(new WorkPoolRunnable());
+    }
+}
+
+private final class WorkPoolRunnable implements Runnable {
+
+    public void run() {
+        int size = MAX_RUNNABLE_BLOCK_SIZE;
+        List<Runnable> block = new ArrayList<Runnable>(size);
+        try {
+            Channel key = ConsumerWorkService.this.workPool.nextWorkBlock(block, size);
+            if (key == null) return; // nothing ready to run
+            try {
+                for (Runnable runnable : block) {
+                    runnable.run();
+                }
+            } finally {
+                if (ConsumerWorkService.this.workPool.finishWorkBlock(key)) {//channle上的任务没有执行完
+                    ConsumerWorkService.this.executor.execute(new WorkPoolRunnable());
+                }
+            }
+        } catch (RuntimeException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+
+```
+##### 2.4.qos
+
+```java
+//一个channel是可以注册多个consumer
+channel.basicQos(10, false); // Per consumer limit
+channel.basicQos(15, true);  // Per channel limit
+channel.basicConsume("my-queue1", false, consumer1);
+channel.basicConsume("my-queue2", false, consumer2);
+```
+
  
 
 参考资料
 -------
+[consumer prefetch](https://www.rabbitmq.com/consumer-prefetch.html)   
 [channel thread](http://www.rabbitmq.com/api-guide.html#channel-threads)   
 [rabbitmq-clustering-ha](http://88250.b3log.org/rabbitmq-clustering-ha)   
 [Publisher Confirms](http://www.rabbitmq.com/confirms.html)
