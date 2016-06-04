@@ -2,7 +2,7 @@
 
 ## Server 关闭
 
-netty上给出的server启动是这样的：
+Netty上给出的server启动是这样的：
 ```java
 try{
     ServerBootstrap b = new ServerBootstrap();
