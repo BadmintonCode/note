@@ -72,6 +72,8 @@ void slabs_free(void *ptr, size_t size, unsigned int id) {
 }
 ```
 
+**注意**：item用来存储实际的数据，始终都由slab来管理，在LRU、HashTable里面存放的只是指向item的指针。
+
 ## LRU
 
 #### 链表
@@ -113,14 +115,15 @@ static void item_unlink_q(item *it) {
 #### item过期处理
 
 `do_item_get()` ：发现item失效、或者过期都会回收到slab中。   
-`do_item_alloc()`：在配置`settings.lru_maintainer_thread=false`的情况下，  
+`do_item_alloc()`：在配置`settings.lru_maintainer_thread=false`的情况下，执行流程如下：
 
-* 从链表尾部开始，回收过期、失效的item到slab池中，循环5次；
-* 调用`slab_alloc()` 分配，如果分配成功返回，如果分配不成功，下一步；
-* 从链表尾部开始，回收过期、失效的item，回收一个`continue;`；踢掉尾部元素（并不一定过期），踢掉一个`break;`，循环5次；
+* 1）从链表尾部开始，回收过期、失效的item到slab池中，循环5次；
+* 2）调用`slab_alloc()` 分配，如果分配成功`return`返回，如果分配不成功，下一步；
+* 3）从链表尾部开始，回收过期、失效的item，回收一个`continue;`；踢掉尾部元素（LRU，并不一定过期），踢掉一个`break;`，循环5次；
 
 上述过程循环5次，直到能成功分配item。
-对于`exptime=0` 的item，不会过期，但是如果空间不够还是会被踢掉。
+
+**注意**：对于`exptime=0` 的item，不会过期，但是如果空间不够还是会被踢掉。
 ```c
 //见lru_pull_tail()
 settings.evict_to_free //如果设置为0 则不会踢掉 exptime=0 的item。
@@ -136,7 +139,7 @@ main()中调用assoc_init初始化hashtable，长度为`1<<settings.hashpower_in
 当调用`assoc_insert(item *it, const uint32_t hv)`发现item总数是hashtable长度的1.5倍时，调用`assoc_start_expand()`唤醒等待的线程。   
 * 等待的线程唤醒后，调用`assoc_expand`分配一个大一倍的hashtable，然后对每个桶加锁迁移（不是一次迁移整个表，防止阻塞woker线程）。迁移由序号最小的桶开始。   
 * 在迁移过程中，插入、查找、删除操作会判断当前key所对应的旧桶是"没有迁移"，还是"已经迁移"，分别在旧hashtable表或者新表中处理。
-"正在迁移"的情况不会出现，因为woker线程会在对应的锁上等待。
+"正在迁移"的情况不会出现，因为woker线程会在对应的锁上等待。（加锁策略见下面）
 
 
 ```c
@@ -183,7 +186,7 @@ for (i = 0; i < item_lock_count; i++) {//初始化hashtable锁
 }
 ```
 
-加锁时，根据key的hash值找到对应的lock加锁，所以迁移过程中，同一个key在新旧表使用的是同一把锁。
+加锁时，根据key的hash值找到对应的lock加锁，所以 **迁移过程中，同一个key在新旧表使用的是同一把锁，整个程序运行期间一个key在hash表上的锁是固定的一个**。
 ```c
 //thread.c
 item *item_get(const char *key, const size_t nkey) {
@@ -296,3 +299,55 @@ void complete_nread_ascii(conn *c)
 
 ```     
 
+##UDP
+
+对UDP的处理与TCP处理不一样，UDP无连接概念，对于本地建立的fd，会dup出多个来分发到不同的线程，（如下：）
+猜测同一个UDP包，在多线程环境下，只能有一个FD可以收到，这样就不会有并发的问题。
+
+```c
+//memcached.cc
+static int server_socket(const char *interface, int port,
+                         enum network_transport transport,
+                         FILE *portnumber_file)
+if (IS_UDP(transport)) {
+    int c;
+
+    for (c = 0; c < settings.num_threads_per_udp; c++) {
+        /* Allocate one UDP file descriptor per worker thread;
+         * this allows "stats conns" to separately list multiple
+         * parallel UDP requests in progress.
+         *
+         * The dispatch code round-robins new connection requests
+         * among threads, so this is guaranteed to assign one
+         * FD to each thread.
+         */
+        int per_thread_fd = c ? dup(sfd) : sfd;
+        dispatch_conn_new(per_thread_fd, conn_read,
+                          EV_READ | EV_PERSIST,
+                          UDP_READ_BUFFER_SIZE, transport);
+    }
+}                          
+
+```
+如果一个应用数据，需要拆分成多个UDP包发送的话，如何组装的问题？可以看看memcached 协议说明。
+
+```
+//https://github.com/memcached/memcached/blob/master/doc/protocol.txt
+In the current implementation, requests must be contained in a single UDP datagram, but
+responses may span several datagrams. 
+
+The frame header is 8 bytes long, as follows (all values are 16-bit integers
+in network byte order, high byte first):
+
+0-1 Request ID
+2-3 Sequence number
+4-5 Total number of datagrams in this message
+6-7 Reserved for future use; must be 0
+```
+memcached 的connection 里面有一个字段表示的是当前的请求ID，在回复的时候，可以分多个UDP包回复。
+```c
+//memcached.cc
+static enum try_read_result try_read_udp(conn *c) 
+
+c->request_id = buf[0] * 256 + buf[1];
+```
