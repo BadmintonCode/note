@@ -553,7 +553,7 @@ public:
 class Soluation
 {
 private:
-    queue<State*> queue;
+    queue<State*> q;
     unordered_set<const State*,Hash,Equal> set;   /*用来记录已经遍历过的状态*/  
     StateHandler state_handler;
 
@@ -563,13 +563,13 @@ public:
     const State* search(const State &start_state, Condition cond)
     {
         State* init_state = new State(start_state);
-        queue.push(init_state);
+        q.push(init_state);
         set.insert(init_state);
 
-        while (!queue.empty())
+        while (!q.empty())
         {
-            State* cur_state = queue.front();
-            queue.pop();
+            State* cur_state = q.front();
+            q.pop();
             vector<State*> states = state_handler.next(cur_state);
             if (states.size() > 0)
             {
@@ -592,7 +592,7 @@ public:
                         return direct_state;
                     }
                     set.insert(direct_state);
-                    queue.push(direct_state);
+                    q.push(direct_state);
                 }
             }
         }

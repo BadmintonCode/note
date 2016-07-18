@@ -35,10 +35,12 @@ gdb -q a <pid>
 ## 源码路径
 ```
 (gdb) dir <directory>     添加path
-(gdb) show dir            显示添加的path
+(gdb) show dir            显示添加的path，只会在目录下查找，不会递归
 (gdb) dir                 清除添加的path
 
 -d -directory <directory>  启动时，带源文件搜索目录
+
+$cwd：当前工作目录；$cdir：编译目录
 
 在一个调试会话中，GDB维护了一个源代码查找目录列表，默认值是编译目录和当前工作目录。
 当GDB需要一个源文件的时候，它依次在这些目录中查找，直到找到一个或者抛出错误。
