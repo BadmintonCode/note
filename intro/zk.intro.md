@@ -1,19 +1,21 @@
 
-## Zookeeper Client 异常处理
+## Zookeeper Client 连接 异常处理
 
 
-#### 轮询逻辑
+### 总结
+
 对于watcher。
 
-* 如果在ping要求的时间内没收到心跳包，触发Disconnected事件，继续重试。  
-* 如果连上server以后，server告知超时，触发 Expired 事件，不重试退出。  
+* 如果在ping要求的时间内没收到心跳包，触发Disconnected事件，继续重试。见A  
+* 如果连上server以后，server告知超时，触发 Expired 事件，不重试退出。见B
 
 对于直接调用（不含callback）
 
-* 如果在ping要求的时间内没收到心跳包，抛出ConnectionLossException。
-* 如果连上server以后，server告知超时，抛出SessionExpiredException。
+* 如果在ping要求的时间内没收到心跳包，抛出ConnectionLossException。见A  
+* 如果连上server以后，server告知超时，抛出SessionExpiredException。见B
 
-##### SendThread.start()
+### 源码如下
+##### SendThread.run()
 ```java
 
 clientCnxnSocket.introduce(this,sessionId);
@@ -22,7 +24,7 @@ clientCnxnSocket.updateLastSendAndHeard();
 int to;
 long lastPingRwServer = System.currentTimeMillis();
 final int MAX_SEND_PING_INTERVAL = 10000; //10 seconds
-while (state.isAlive()) {//不为CLOSED状态
+while (state.isAlive()) {//B 不为CLOSED状态继续执行
   try {
     if (!clientCnxnSocket.isConnected()) {
         if (closing || !state.isAlive()) {
@@ -36,7 +38,7 @@ while (state.isAlive()) {//不为CLOSED状态
     } else {
         to = connectTimeout - clientCnxnSocket.getIdleRecv();
     }
-    if (to <= 0) {//指定时间没有收到请求，抛出 SessionTimeoutException
+    if (to <= 0) {//A 指定时间没有收到请求，抛出 SessionTimeoutException
         ...
         throw new SessionTimeoutException(warnInfo);
     }
@@ -56,15 +58,15 @@ while (state.isAlive()) {//不为CLOSED状态
         }
     }
     ...
-    clientCnxnSocket.doTransport(to, pendingQueue, outgoingQueue, ClientCnxn.this);
+    clientCnxnSocket.doTransport(to, pendingQueue, outgoingQueue, ClientCnxn.this);//见下面分析
   } catch (Throwable e) {
     if (closing) {//client主动关闭直接退出重试
         ...
         break;
     } else {
-        if (e instanceof SessionExpiredException) {
+        if (e instanceof SessionExpiredException) { //here
             LOG.info(e.getMessage() + ", closing socket connection");
-        } else if (e instanceof SessionTimeoutException) {
+        } else if (e instanceof SessionTimeoutException) { // B
             LOG.info(e.getMessage() + RETRY_CONN_MSG);
         } else if (e instanceof EndOfStreamException) {
             LOG.info(e.getMessage() + RETRY_CONN_MSG);
@@ -79,19 +81,19 @@ while (state.isAlive()) {//不为CLOSED状态
                             + ", unexpected error"
                             + RETRY_CONN_MSG, e);
         }
-        cleanup();
-        if (state.isAlive()) {//不为CLOSED 状态
+        cleanup();//见下面分析
+        if (state.isAlive()) {//A 不为 States.CLOSED 状态
             eventThread.queueEvent(new WatchedEvent(Event.EventType.None, Event.KeeperState.Disconnected, null));
         }
         clientCnxnSocket.updateNow();
         clientCnxnSocket.updateLastSendAndHeard();
     }
   }
-}
-cleanup();
+}// end while
+cleanup();//见下面分析
 clientCnxnSocket.close();
-if (state.isAlive()) {
-    // 通知Disconnected 事件
+if (state.isAlive()) {// 
+    // A 通知Disconnected 事件
     eventThread.queueEvent(new WatchedEvent(Event.EventType.None,Event.KeeperState.Disconnected, null));
 }
 ```
@@ -114,10 +116,10 @@ doTransport(int waitTimeOut, List<Packet> pendingQueue, LinkedList<Packet> outgo
         ->ClientCnxnSocket.readConnectResult()
           ->this.sessionId = conRsp.getSessionId();
           ->SendThread.onConnected(conRsp.getTimeOut(), this.sessionId,conRsp.getPasswd(), isRO)
-            ->negotiatedSessionTimeout = _negotiatedSessionTimeout;
-             ->if negotiatedSessionTimeout <= 0 //过期了
-              ->state = States.CLOSED;
-              ->eventThread.queueEvent(new WatchedEvent(Watcher.Event.EventType.None,Watcher.Event.KeeperState.Expired, null))//通知过期
+            ->negotiatedSessionTimeout = _negotiatedSessionTimeout; //就是 conRsp.getTimeOut()
+             ->if negotiatedSessionTimeout <= 0 //B 过期了
+              ->state = States.CLOSED; //B 设置 
+              ->eventThread.queueEvent(new WatchedEvent(Watcher.Event.EventType.None,Watcher.Event.KeeperState.Expired, null))//B 通知过期
               ->throw new SessionExpiredException(warnInfo);//
              ->else
               ->state = (isRO) ? States.CONNECTEDREADONLY : States.CONNECTED;
@@ -134,10 +136,10 @@ switch (state) {
       p.replyHeader.setErr(KeeperException.Code.AUTHFAILED.intValue());
       break;
   case CLOSED:
-      p.replyHeader.setErr(KeeperException.Code.SESSIONEXPIRED.intValue());
+      p.replyHeader.setErr(KeeperException.Code.SESSIONEXPIRED.intValue()); // B
       break;
   default:
-      p.replyHeader.setErr(KeeperException.Code.CONNECTIONLOSS.intValue());
+      p.replyHeader.setErr(KeeperException.Code.CONNECTIONLOSS.intValue());// A
 }
 finishPacket(p);
 ```
