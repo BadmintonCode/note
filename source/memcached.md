@@ -146,6 +146,10 @@ main()中调用assoc_init初始化hashtable，长度为`1<<settings.hashpower_in
 //assoc.c
 //主要变量
 unsigned int hashpower = HASHPOWER_DEFAULT; //默认16， 1<<hashpower决定了表的长度
+
+#define hashsize(n) ((ub4)1<<(n))
+#define hashmask(n) (hashsize(n)-1)
+
 static item** primary_hashtable = 0;
 static item** old_hashtable = 0;
 static unsigned int hash_items = 0;//hashtable中的元素数
@@ -153,19 +157,45 @@ static bool expanding = false;//标记是否正在迁移
 static bool started_expanding = false;
 static unsigned int expand_bucket = 0;//正在迁移的桶
 
-
-//新旧表的判断处理
-if (expanding &&(oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
+ 
+//插入元素 新旧表的判断处理 int assoc_insert(item *it, const uint32_t hv) 
+unsigned int oldbucket;
+if (expanding &&
+    (oldbucket = (hv & hashmask(hashpower - 1))) >= expand_bucket)
 {
-    it = old_hashtable[oldbucket];
+    it->h_next = old_hashtable[oldbucket];
+    old_hashtable[oldbucket] = it;
 } else {
-    it = primary_hashtable[hv & hashmask(hashpower)];
+    it->h_next = primary_hashtable[hv & hashmask(hashpower)];
+    primary_hashtable[hv & hashmask(hashpower)] = it;
+}
+
+// hash 扩容，一倍大小
+static void assoc_expand(void) {
+    old_hashtable = primary_hashtable;
+
+    primary_hashtable = calloc(hashsize(hashpower + 1), sizeof(void *));
+    if (primary_hashtable) {
+        if (settings.verbose > 1)
+            fprintf(stderr, "Hash table expansion starting\n");
+        hashpower++;
+        expanding = true;
+        expand_bucket = 0;
+        STATS_LOCK();
+        stats.hash_power_level = hashpower;
+        stats.hash_bytes += hashsize(hashpower) * sizeof(void *);
+        stats.hash_is_expanding = 1;
+        STATS_UNLOCK();
+    } else {
+        primary_hashtable = old_hashtable;
+        /* Bad news, but we can keep running. */
+    }
 }
 
 ```
 
 #### 哈希表锁
-在woker线程初始化时，会根据线程数设定锁的数量，即使hashtable扩容，锁的数量不变。
+在woker线程初始化时，会根据线程数设定锁的数量。即使hashtable扩容，锁的数量不变，并且锁的数量小于hash桶的数量。
 ```c
 //thread.c
 //根据线程数定义锁的数量
@@ -178,6 +208,12 @@ if (nthreads < 3) {
 } else {
     power = 13;
 }
+if (power >= hashpower) { //
+  fprintf(stderr, "Hash table power size (%d) cannot be equal to or less than item lock table (%d)\n", hashpower, power);
+  fprintf(stderr, "Item lock table grows with `-t N` (worker threadcount)\n");
+  fprintf(stderr, "Hash table grows with `-o hashpower=N` \n");
+  exit(1);// 锁的数量不超过hash表的大小
+}
 ...
 item_lock_count = hashsize(power);
 item_lock_hashpower = power;
@@ -186,9 +222,11 @@ for (i = 0; i < item_lock_count; i++) {//初始化hashtable锁
 }
 ```
 
-加锁时，根据key的hash值找到对应的lock加锁，所以 **迁移过程中，同一个key在新旧表使用的是同一把锁，整个程序运行期间一个key在hash表上的锁是固定的一个**。
+加锁时，根据key的hash值找到对应的lock加锁，`hv & hashmask(item_lock_hashpower)` 。 
+
 ```c
 //thread.c
+//worker线程操作如何使用锁
 item *item_get(const char *key, const size_t nkey) {
     item *it;
     uint32_t hv;
@@ -203,6 +241,10 @@ void item_lock(uint32_t hv) {
 }
 
 ```
+
+*  ** woker线程和迁移线程使用同样的锁，防止并发修改，桶与锁是多对一的关系 **    
+*  ** woker线程访问桶中的某个key时，使用的锁和迁移该桶使用的是同一个锁 **    
+*  ** 同一个key在新旧表使用的是同一把锁，因为hash值不变 **
 
 
 ## 读写操作
