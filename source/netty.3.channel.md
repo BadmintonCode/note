@@ -47,15 +47,15 @@ class NioSocketChannel{
 //config 默认值为new NioSocketChannelConfig(this, socket.socket());
 ```
 
-#### Channel相关参数
+### Channel相关参数
 SocketChannelConfig 可以指定Channel相关的参数，如下：
 
-##### Buffer相关
+#### Buffer
 
-这里指Netty定义的Channel用到的buffer。
+这里指Netty定义的Channel用到的buffer。主要涉及到2块。
 
-*   接收Buffer 大小策略
-*   channel相关的buffer分配器
+*   接收Buffer 大小策略 （分配大小 见 **RecvByteBufAllocator**）
+*   channel相关的buffer分配器 (buffer底层实现 见 ** ByteBufAllocator **)
 
 ```java
 class DefaultChannelConfig implements ...{
@@ -64,20 +64,36 @@ class DefaultChannelConfig implements ...{
 }
 ```
 
-从TCP读数据：读事件触发新分配一个buffer用于保存读到的数据（每次读都会新分配一个），rcvBufAllocator 指定分配用于读的buffer的大小策略，有两种策略。之所以存在大小分配策略，是因为   在读数据的时候，有可能当前不能读完，需要新申请buffer，如果指定动态分配，每次会记下当次buffer使用情况，
-用于对下一次buffer大小策略（见NioByteUnsafe.read()）。   这里的大小指的是buffer的initialCapacity参数。   
+**从TCP读数据**
 
-```
+
+读事件触发新分配一个buffer用于保存读到的数据（每次读都会新分配一个），rcvBufAllocator 指定分配用于读的buffer的大小策略，有两种策略。之所以存在大小分配策略，是因为   在读数据的时候，有可能当前不能读完，需要新申请buffer，如果指定动态分配，每次会记下当次buffer使用情况，
+用于对下一次buffer大小策略（见NioByteUnsafe.read()）。   这里的大小指的是buffer的initialCapacity参数。   
+见 `RecvByteBufAllocator`的2个子类
+
+```java
 AdaptiveRecvByteBufAllocator：动态大小
 FixedRecvByteBufAllocator：固定
 ```
 
 
-往TCP写数据： 数据先写到`ChannelOutboundBuffer` buffer中（每个Channel使用固定的一个，并且生命周期只使用一个），在成员unsafe中定义并初始化。
+** 往TCP写数据 **
 
-一般调用write写buffer时候，写到ChannelOutboundBuffer之前会判断是否是DirectBuffer，如果不是会进行转化，
+ 数据先写到`ChannelOutboundBuffer` buffer中（每个Channel使用固定的一个，并且生命周期只使用一个），在成员unsafe中定义并初始化。
+
+一般调用write写buffer时候，**写到ChannelOutboundBuffer之前会判断是否是DirectBuffer，如果不是会进行转化**，
 见`AbstractNioByteChannel.filterOutboundMessage`。
 
+** buffer底层实现 **
+
+有2个维度，一个是 heap/direct ，一个是 pooled/unpooled。
+
+`ByteBufAllocator` 类下面有2个子类:
+```java
+UnpooledByteBufAllocator
+PooledByteBufAllocator
+```
+基于内存池的buffer使用threadlocal来实现，所以跨线程传递 buffer的时候容易出现内存泄露（`http://www.infoq.com/cn/articles/netty-version-upgrade-history-thread-part`）。
 
 #####  socket相关的参数
 
