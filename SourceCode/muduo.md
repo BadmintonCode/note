@@ -77,3 +77,12 @@ handleError()`，空操作。
 * 读到Client关闭写
 handleRead()读取到client关闭写，直接调用handleClose()，移除connection
 
+
+Server析构时候，还没有关闭的Connection，会直接被析构调用close关闭
+
+资源释放流程
+~Server(): 移除Connection，并将Connection::destroy （kDisConnected）放入loop（woker）队列中
+~EventLoop()[loop]:触发loop shutdown，等待线程终止，线程继续执行 队列中的任务（比如 Connection::destroy）
+~EventLoop()[baseloop]: 同上，baseLoop最后回收
+
+

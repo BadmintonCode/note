@@ -1,6 +1,4 @@
-fault
-/*a bind function example*/
-
+//a bind function example
 #include <iostream>
 
 template<typename ReturnType,typename ArgType>

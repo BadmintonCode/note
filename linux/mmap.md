@@ -48,8 +48,8 @@ offset：
  进程共享，通过mmap+fork 子进程继承父进程地址空间。
 
 ```
-00400000-00401000 r-xp 00000000 fc:11 1318400                            /home/webedit/gwei/mmap.out
-00600000-00601000 rw-p 00000000 fc:11 1318400                            /home/webedit/gwei/mmap.out
+00400000-00401000 r-xp 00000000 fc:11 1318400                            /home/webedit/<user>/mmap.out
+00600000-00601000 rw-p 00000000 fc:11 1318400                            /home/webedit/<user>/mmap.out
 3fa5e00000-3fa5e20000 r-xp 00000000 fc:01 57373                          /lib64/ld-2.12.so
 3fa601f000-3fa6020000 r--p 0001f000 fc:01 57373                          /lib64/ld-2.12.so
 3fa6020000-3fa6021000 rw-p 00020000 fc:01 57373                          /lib64/ld-2.12.so
@@ -61,7 +61,7 @@ offset：
 3fa698f000-3fa6994000 rw-p 00000000 00:00 0 
 7ffbd084c000-7ffbd084f000 rw-p 00000000 00:00 0 
 7ffbd085a000-7ffbd085b000 rw-s 00000000 00:04 250996                     /dev/zero (deleted) //匿名映射
-7ffbd085b000-7ffbd085c000 rw-s 00000000 fc:11 1318401                    /home/webedit/gwei/test.txt //文件映射
+7ffbd085b000-7ffbd085c000 rw-s 00000000 fc:11 1318401                    /home/webedit/<user>/test.txt //文件映射
 7ffbd085c000-7ffbd085e000 rw-p 00000000 00:00 0 
 7fffb579d000-7fffb57be000 rw-p 00000000 00:00 0                          [stack]
 7fffb57d7000-7fffb57d8000 r-xp 00000000 00:00 0                          [vdso]
