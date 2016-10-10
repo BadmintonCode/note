@@ -2,8 +2,8 @@
 
 |type|title|
 |----|----|
-|算法|[华容道算法](Algorithm/Solution.cpp)|
-|CPP|[实现C++ bind](CPP/bind.cpp)|
+|算法|[华容道算法](algorithm/Solution.cpp)|
+|CPP|[实现C++ bind](cpp/bind.cpp)|
 |源码分析|[XmemcachedClient源码分析](SourceCode/xmemcached.sourcecode.md)|
 |源码分析|[libevent源码分析](SourceCode/libevent.sourcecode.md)|
 |故障分析|[HttpClient SSL链接参数设置不当导致链接池泄露](fault/httpclient.pool.md)|
