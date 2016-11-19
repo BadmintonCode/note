@@ -38,7 +38,8 @@
 #include <queue>
 #include <vector>
 #include <unordered_set>
-
+#include <memory>
+  
 using namespace std;
 
 #define WIDTH 4             /*棋盘宽度*/
@@ -125,23 +126,20 @@ public:
     int direct;
     int id;
     int parentId;
-    const State* parent;
+    shared_ptr<State> parent;
     static int  ID;
 public:
-    State():values(4),parent(NULL),step(0),id(0),parentId(-1)
+    State():values(4),parent(shared_ptr<State>()),step(0),id(0),parentId(-1)
     {
         for (int i = 0; i < 4; i++)
             values[i] = 0;
-        //this->id = (ID++);
     }
-    State(const State &state)
+    State(const shared_ptr<State>& state)
     {
-         if(this == &state)
-            return;
-         values=state.values;
+         values = state->values;
          step = 0;
          id = 0;
-         parent = NULL;
+         parent = state;
          this->id = (++ID);
          
     }
@@ -168,6 +166,9 @@ public:
     {
         (*this)[index] = (*this)[index] | POINT_MOVE(1, i, j);
     }
+private:
+    const State& operator=(const State &);
+
 };
 int State::ID = 0;
 
@@ -284,21 +285,14 @@ public:
     */
     static void fill(int positions, int width, int height, int &chart)
     {
-        //for (int n = 0; n < SIZE; n++)
-        //{
-            //if ((positions & (1 << n)) > 0)
-            //{
-             //   int x = n / WIDTH;
-             //   int y = n % WIDTH;
-                for (int i = 0; i < height; i++)
-                {
-                    for (int j = 0; j < width; j++)
-                    {
-                        chart = chart | POINT_MOVE(positions, i, j) ;
-                    }
-                } 
-            //}
-        //} 
+        for (int i = 0; i < height; i++)
+        {
+            for (int j = 0; j < width; j++)
+            {
+                chart = chart | POINT_MOVE(positions, i, j) ;
+            }
+        } 
+
     }; 
 
     /**
@@ -352,26 +346,22 @@ struct LOG
     static void debug(const Border &border)
     {
         Pannel pannel;
-        //cout<<"id-"<<(state.id)<<",parent-"<<state.parentId<<endl;
         PointUtil::draw(border, 'X', pannel);
         pannel.show();
     }
     static void debug(const int &points)
     {
         Pannel pannel;
-        //cout<<"id-"<<(state.id)<<",parent-"<<state.parentId<<endl;
         PointUtil::draw(points, 'X', pannel);
         pannel.show();
     }
     static void info(const State &state)
     {
-        //cout<<"id-"<<(state.id)<<",parent-"<<state.parentId<<endl;
-            Pannel pannel;
-            cout<<"step-"<<state.step<<",id-"<<(state.id)<<",parent-"<<state.parentId<<endl;
-            PointUtil::draw(state, pannel);
-            pannel.show();
+        Pannel pannel;
+        cout<<"step-"<<state.step<<",id-"<<(state.id)<<",parent-"<<state.parentId<<endl;
+        PointUtil::draw(state, pannel);
+        pannel.show();
     }
-    //static void debug()
 };
 /*
 棋子基类
@@ -393,7 +383,7 @@ struct Shape
     /**
     * 某个状态下，当前所有棋子空间点集为chart， 可以移动index 对应的棋子 ，达到的状态放在 results 中
     */
-    void move(const State *state, int &chart, vector<State*> &results)
+    void move(const shared_ptr<State>& state, int &chart, vector<shared_ptr<State>> &results)
     {
         int positions = (*state)[this->index]; //获取index 所有棋子的点集
         int i = 0;
@@ -419,7 +409,7 @@ struct Shape
                     continue;
                 }
                 
-                State* new_state = new State((*state));
+                shared_ptr<State> new_state = make_shared<State>(state);
 
                 //cout<<"state->id "<<(state->id)<<endl;
 
@@ -510,9 +500,9 @@ public:
     /*
     * 根据当前状态 state ，选择棋盘上所有的棋子进行移动。
     */
-    vector<State*> next(State *state)
+    vector<shared_ptr<State>> next(const shared_ptr<State>& state)
     {
-        vector<State*> results;
+        vector<shared_ptr<State>> results; 
         int chart = 0;
         PointUtil::fill(*state, chart);
         bbox.move(state, chart, results);
@@ -530,7 +520,7 @@ public:
  struct Equal
 {
 
-    bool operator()(const State *s1, const State *s2) const
+    bool operator()(const shared_ptr<State>& s1, const shared_ptr<State>& s2) const
     {
         for(int i = 0; i < 4; i++)
         {
@@ -543,7 +533,7 @@ public:
 struct Hash
 {
 public:
-    int operator()(const State *state) const
+    int operator()(const shared_ptr<State>& state) const
     {
          int h = (*state)[0] ^ ((*state)[1] << 1) ^ ((*state)[2] << 2) ^ ((*state)[3] << 3) ; 
          return h;
@@ -553,42 +543,34 @@ public:
 class Soluation
 {
 private:
-    queue<State*> q;
-    unordered_set<const State*,Hash,Equal> set;   /*用来记录已经遍历过的状态*/  
+    queue<shared_ptr<State>> q;
+    unordered_set<shared_ptr<State>,Hash,Equal> set;   /*用来记录已经遍历过的状态*/  
     StateHandler state_handler;
 
 
 public:
     template <class Condition>
-    const State* search(const State &start_state, Condition cond)
+    shared_ptr<State> search(const shared_ptr<State> &start_state, Condition cond)
     {
-        State* init_state = new State(start_state);
-        q.push(init_state);
-        set.insert(init_state);
+        q.push(start_state);
+        set.insert(start_state);
 
         while (!q.empty())
         {
-            State* cur_state = q.front();
+            auto cur_state = q.front();
             q.pop();
-            vector<State*> states = state_handler.next(cur_state);
+            vector<shared_ptr<State>> states = state_handler.next(cur_state);
             if (states.size() > 0)
             {
                 for (int i = 0; i < states.size(); i++)
                 {
-                    State* direct_state = states[i];
+                    auto &direct_state = states[i];
                     if (0 < set.count(direct_state)){
-                        delete direct_state;
                         continue;
                     } 
-                    else
-                    {
-                        //LOG::info((*direct_state));
-                    }
                     LOG::debug(*direct_state);
-                    if (cond.call(*direct_state))//->arrive(0, 3, 1))
+                    if (cond.call(*direct_state))
                     {
-                        record_path(direct_state, set);
-                        //LOG::debug(*new_state);
                         return direct_state;
                     }
                     set.insert(direct_state);
@@ -596,35 +578,8 @@ public:
                 }
             }
         }
-        return NULL;
+        return shared_ptr<State>();
     }
-
-    void record_path(const State *state, unordered_set<const State*,Hash,Equal> &set )
-    {
-        //vector<const State*> results;
-        while(state != NULL)
-        {
-            //results.push_back(state);
-            set.erase(state);
-            state = state->parent;
-        }
-
-        //cout<<"size "<<results.size()<<endl;
-
-        // for (int i = results.size() - 1; i > 0; i--)
-        // {
-        //     LOG::debug((*results[i]));
-        // }
-
-        for (unordered_set<const State*,Hash,Equal>::iterator it = set.begin(); it != set.end(); it++)
-        {
-            delete (*it);
-        }
-
-        
-    }
-
-
 };
 
 struct Condition
@@ -636,38 +591,29 @@ struct Condition
 };
 int main()
 {
-    State state;
-    state.fill(0, 0, 1);
+    auto state = make_shared<State>();
+    state->fill(0, 0, 1);
 
-    state.fill(1, 0, 0);
-    state.fill(1, 0, 3);
-    state.fill(1, 2, 0);
-    state.fill(1, 2, 3);
+    state->fill(1, 0, 0);
+    state->fill(1, 0, 3);
+    state->fill(1, 2, 0);
+    state->fill(1, 2, 3);
 
-    state.fill(2, 2, 1);
+    state->fill(2, 2, 1);
 
-    state.fill(3, 4, 0);
-    state.fill(3, 3, 1);
-    state.fill(3, 3, 2);
-    state.fill(3, 4, 3);
+    state->fill(3, 4, 0);
+    state->fill(3, 3, 1);
+    state->fill(3, 3, 2);
+    state->fill(3, 4, 3);
 
     Soluation sol;
     Condition cond;
-    //LOG::debug(state);
 
-    const State *target_state = sol.search(state,cond);
+    shared_ptr<State> target_state = sol.search(state, cond);
     while(target_state != NULL)
     {
-        while(target_state != NULL)
-        {
-            //results.push_back(state);
-            //set.erase(state);
-            LOG::info((*target_state));
-            target_state = target_state->parent;
-        }
+        LOG::info((*target_state));
+        target_state = target_state->parent;
     }
-    //cout<<sol.search(state,cond)<<endl;
-
-
-     return 0;
+    return 0;
 }
