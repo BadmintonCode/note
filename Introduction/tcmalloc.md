@@ -65,7 +65,7 @@ class Static{
 }
 ```
 
-##PageHeap
+## PageHeap
 
 ```cpp
 //主要成员
@@ -94,7 +94,7 @@ PageMap pagemap_;  // TCMalloc_PageMap2
 * 如果仍找不到会调用 PageHeap::GrowHeap(Length n) 分配内存,见`TCMalloc_SystemAlloc()`
 
 
-##TCMalloc_SystemAlloc()
+## TCMalloc_SystemAlloc()
 用于向系统申请内存
 ```cpp
 TCMalloc_SystemAlloc(size_t size, size_t *actual_size, size_t alignment)
